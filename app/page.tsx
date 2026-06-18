@@ -58,6 +58,11 @@ type ChallengeForm = {
   mode: ChallengeMode;
 };
 
+type ScenarioForm = {
+  durationMinutes: string;
+  difficulty: AirportDifficulty;
+};
+
 type GeneratedRoute = {
   from: Airport;
   to: Airport;
@@ -84,6 +89,21 @@ type GeneratedChallenge = {
   rules: string[];
   success: string[];
   routeNote?: string;
+};
+
+type GeneratedScenario = {
+  title: string;
+  type: string;
+  durationMinutes: number;
+  difficulty: AirportDifficulty;
+  story: string;
+  from: Airport;
+  to: Airport;
+  distanceNm: number;
+  aircraft: string[];
+  conditions: string[];
+  goals: string[];
+  specialRules: string[];
 };
 
 const initialForm: WeatherForm = {
@@ -117,6 +137,11 @@ const initialChallengeForm: ChallengeForm = {
   durationMinutes: "45",
   difficulty: "Mittel",
   mode: "Eigenständig",
+};
+
+const initialScenarioForm: ScenarioForm = {
+  durationMinutes: "90",
+  difficulty: "Mittel",
 };
 
 const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherForm }[] = [
@@ -182,8 +207,10 @@ export default function Home() {
   const [form, setForm] = useState<WeatherForm>(initialForm);
   const [routeForm, setRouteForm] = useState<RouteForm>(initialRouteForm);
   const [challengeForm, setChallengeForm] = useState<ChallengeForm>(initialChallengeForm);
+  const [scenarioForm, setScenarioForm] = useState<ScenarioForm>(initialScenarioForm);
   const [generatedRoute, setGeneratedRoute] = useState<GeneratedRoute | null>(null);
   const [generatedChallenge, setGeneratedChallenge] = useState<GeneratedChallenge | null>(null);
+  const [generatedScenario, setGeneratedScenario] = useState<GeneratedScenario | null>(null);
   const [status, setStatus] = useState<ApiResult | null>(null);
   const [sendResult, setSendResult] = useState<ApiResult | null>(null);
   const [routeApplyResult, setRouteApplyResult] = useState<ApiResult | null>(null);
@@ -281,6 +308,10 @@ export default function Home() {
     setGeneratedChallenge(createChallenge(challengeForm, generatedRoute));
   }
 
+  function generateScenario() {
+    setGeneratedScenario(createScenario(scenarioForm));
+  }
+
   async function applyRouteToXPlane() {
     if (!generatedRoute) {
       return;
@@ -356,7 +387,7 @@ export default function Home() {
           </button>
           <button className="menuTile scenarioTile" type="button" onClick={() => setActiveView("scenario")}>
             <span className="menuTileTitle">Szenario</span>
-            <strong>Kommt später</strong>
+            <strong>Flugmission mit Auftrag erstellen</strong>
           </button>
         </section>
       </main>
@@ -669,6 +700,8 @@ export default function Home() {
   }
 
   if (activeView === "scenario") {
+    const scenarioDuration = Number(scenarioForm.durationMinutes);
+
     return (
       <main className="shell" data-theme={theme}>
         <section className="topline">
@@ -686,9 +719,58 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="panel placeholderPanel">
-          <h2>Szenario kommt später</h2>
-          <p className="muted">Diese Ansicht ist schon klickbar. Den Inhalt bauen wir später.</p>
+        <section className="routeWorkspace">
+          <form className="panel routePanel" onSubmit={(event) => event.preventDefault()}>
+            <div className="panelHeader">
+              <h2>Szenario generieren</h2>
+              <p>Wähle Dauer und Schwierigkeit. Danach erstellt die App einen passenden Flugauftrag.</p>
+            </div>
+
+            <Slider
+              label="Flugdauer"
+              unit=""
+              min="20"
+              max="900"
+              step="10"
+              value={scenarioForm.durationMinutes}
+              displayValue={formatMinutes(scenarioDuration)}
+              color={durationColor(scenarioDuration)}
+              onChange={(value) => setScenarioForm({ ...scenarioForm, durationMinutes: value })}
+            />
+
+            <div className="routeControls">
+              <label>
+                Schwierigkeit
+                <select
+                  value={scenarioForm.difficulty}
+                  onChange={(event) =>
+                    setScenarioForm({
+                      ...scenarioForm,
+                      difficulty: event.target.value as AirportDifficulty,
+                    })
+                  }
+                >
+                  <option>Einfach</option>
+                  <option>Mittel</option>
+                  <option>Schwer</option>
+                  <option>Extrem</option>
+                </select>
+              </label>
+            </div>
+
+            <button className="primaryButton" type="button" onClick={generateScenario}>
+              Szenario generieren
+            </button>
+          </form>
+
+          <aside className="panel routeResultPanel">
+            <h2>Mission</h2>
+            {generatedScenario ? (
+              <ScenarioResult scenario={generatedScenario} />
+            ) : (
+              <p className="muted">Noch kein Szenario generiert.</p>
+            )}
+          </aside>
         </section>
       </main>
     );
@@ -1193,6 +1275,49 @@ function ChallengeList({ items, title }: { items: string[]; title: string }) {
   );
 }
 
+function ScenarioResult({ scenario }: { scenario: GeneratedScenario }) {
+  return (
+    <div className="challengeResult">
+      <div className="challengeHero">
+        <span>{scenario.type}</span>
+        <h2>{scenario.title}</h2>
+        <p>{scenario.story}</p>
+      </div>
+
+      <div className="routeAirports">
+        <AirportCard label="Start" airport={scenario.from} />
+        <AirportCard label="Ziel" airport={scenario.to} />
+      </div>
+
+      <div className="routeStats">
+        <div>
+          <span>Dauer</span>
+          <strong>{formatMinutes(scenario.durationMinutes)}</strong>
+        </div>
+        <div>
+          <span>Entfernung</span>
+          <strong>{Math.round(scenario.distanceNm)} NM</strong>
+        </div>
+        <div>
+          <span>Schwierigkeit</span>
+          <strong>{scenario.difficulty}</strong>
+        </div>
+        <div>
+          <span>Flugzeug</span>
+          <strong>{scenario.aircraft[0]}</strong>
+        </div>
+      </div>
+
+      <div className="challengeInfoGrid">
+        <ChallengeList title="Missionsziele" items={scenario.goals} />
+        <ChallengeList title="Bedingungen" items={scenario.conditions} />
+        <ChallengeList title="Besondere Regeln" items={scenario.specialRules} />
+        <ChallengeList title="Empfohlene Flugzeuge" items={scenario.aircraft} />
+      </div>
+    </div>
+  );
+}
+
 function AirportPicker({
   airports,
   isOpen,
@@ -1521,6 +1646,218 @@ function durationGoal(durationMinutes: number) {
   }
 
   return "Lange Aufgabe: Energie, Wetter und Anflug früh planen.";
+}
+
+function createScenario(form: ScenarioForm): GeneratedScenario {
+  const requestedMinutes = Number(form.durationMinutes);
+  const templatePool = scenarioTemplates.filter(
+    (template) => airportDifficultyRank[template.minDifficulty] <= airportDifficultyRank[form.difficulty],
+  );
+  const template = pickRandom(templatePool);
+  const route = pickScenarioRoute(requestedMinutes, form.difficulty, template.aircraftCategory);
+  const conditions = [
+    pickByDifficulty(scenarioWeather, form.difficulty),
+    pickByDifficulty(scenarioPressure, form.difficulty),
+    scenarioTimeText(requestedMinutes, form.difficulty),
+  ];
+
+  return {
+    title: template.title,
+    type: template.type,
+    durationMinutes: route.estimatedMinutes,
+    difficulty: form.difficulty,
+    story: template.story(route.from, route.to),
+    from: route.from,
+    to: route.to,
+    distanceNm: route.distanceNm,
+    aircraft: template.aircraft,
+    conditions,
+    goals: template.goals(route.from, route.to),
+    specialRules: [
+      template.rule,
+      pickByDifficulty(scenarioRules, form.difficulty),
+      `Plane den Flug für ungefähr ${formatMinutes(route.estimatedMinutes)}.`,
+    ],
+  };
+}
+
+const scenarioTemplates: {
+  title: string;
+  type: string;
+  minDifficulty: AirportDifficulty;
+  aircraftCategory: AircraftCategory;
+  aircraft: string[];
+  rule: string;
+  story: (from: Airport, to: Airport) => string;
+  goals: (from: Airport, to: Airport) => string[];
+}[] = [
+  {
+    title: "Morgenflug zwischen Großstädten",
+    type: "Passagierflug",
+    minDifficulty: "Einfach",
+    aircraftCategory: "Jet",
+    aircraft: ["Airbus A320", "Boeing 737", "Embraer E-Jet"],
+    rule: "Halte den Flug ruhig und komfortabel.",
+    story: (from, to) =>
+      `Eine volle Maschine wartet in ${from.city}. Die Passagiere müssen pünktlich nach ${to.city}, weil viele dort Anschlussflüge haben.`,
+    goals: (from, to) => [
+      `Starte sicher in ${from.icao}.`,
+      `Fliege eine stabile Reiseflugphase nach ${to.icao}.`,
+      "Lande weich und möglichst pünktlich.",
+    ],
+  },
+  {
+    title: "Eilige Ersatzteile",
+    type: "Frachttransport",
+    minDifficulty: "Mittel",
+    aircraftCategory: "Turboprop",
+    aircraft: ["Beechcraft King Air", "DHC-6 Twin Otter", "ATR 72 Cargo"],
+    rule: "Die Fracht darf nicht durch harte Manöver beschädigt werden.",
+    story: (from, to) =>
+      `In ${to.city} steht ein Flugzeug wegen eines Defekts. Von ${from.city} müssen Ersatzteile schnell geliefert werden.`,
+    goals: (from, to) => [
+      `Belade die Fracht in ${from.icao}.`,
+      "Fliege ohne unnötige Umwege.",
+      `Rolle nach der Landung in ${to.icao} sicher aus.`,
+    ],
+  },
+  {
+    title: "Inselhüpfen mit Zeitplan",
+    type: "Inselauftrag",
+    minDifficulty: "Mittel",
+    aircraftCategory: "Turboprop",
+    aircraft: ["DHC-6 Twin Otter", "Cessna Caravan", "King Air"],
+    rule: "Bleibe unter der Wolkendecke, wenn es sicher möglich ist.",
+    story: (from, to) =>
+      `Zwischen ${from.city} und ${to.city} müssen Passagiere und Post transportiert werden. Das Wetter kann über dem Wasser schnell wechseln.`,
+    goals: (from, to) => [
+      "Halte genug Abstand zu Wolken und Wasser.",
+      `Finde ${to.icao} ohne lange Suche.`,
+      "Lande kontrolliert auch bei Seitenwind.",
+    ],
+  },
+  {
+    title: "Geschäftsreise unter Druck",
+    type: "Businessflug",
+    minDifficulty: "Einfach",
+    aircraftCategory: "Jet",
+    aircraft: ["Citation CJ4", "Phenom 300", "Learjet"],
+    rule: "Der Flug soll schnell sein, aber nicht hektisch.",
+    story: (from, to) =>
+      `Ein Team muss von ${from.city} nach ${to.city}. Vor Ort startet direkt nach der Landung ein wichtiger Termin.`,
+    goals: (from, to) => [
+      "Starte ohne Verzögerung.",
+      "Halte den Sinkflug früh geplant.",
+      `Komme sicher in ${to.icao} an.`,
+    ],
+  },
+  {
+    title: "Suchflug nach vermisstem Boot",
+    type: "Rettungsflug",
+    minDifficulty: "Schwer",
+    aircraftCategory: "Propeller",
+    aircraft: ["Cessna 172", "Cessna 208 Caravan", "Kodiak 100"],
+    rule: "Fliege niedrig genug zum Suchen, aber immer mit sicherer Reserve.",
+    story: (from, to) =>
+      `Nahe ${to.city} wird ein kleines Boot vermisst. Du startest in ${from.city} und suchst das Gebiet aus der Luft ab.`,
+    goals: () => [
+      "Fliege ein ruhiges Suchmuster.",
+      "Halte Sichtkontakt zum Gelände oder Wasser.",
+      "Kehre mit genug Treibstoff sicher zurück oder lande am Ziel.",
+    ],
+  },
+  {
+    title: "Versorgung in abgelegene Region",
+    type: "Versorgungsflug",
+    minDifficulty: "Schwer",
+    aircraftCategory: "Turboprop",
+    aircraft: ["Cessna Caravan", "Pilatus PC-12", "DHC-6 Twin Otter"],
+    rule: "Die Landung muss sicher sein. Kein unnötiges Risiko wegen Zeitdruck.",
+    story: (from, to) =>
+      `In ${to.city} werden Medikamente und Lebensmittel gebraucht. Die Strecke ab ${from.city} führt in schwierigeres Gebiet.`,
+    goals: (from, to) => [
+      `Starte mit der Versorgungsladung in ${from.icao}.`,
+      "Achte auf Wetter und Gelände.",
+      `Liefere die Ladung in ${to.icao} ab.`,
+    ],
+  },
+  {
+    title: "VIP-Flug bei schlechtem Wetter",
+    type: "VIP-Transport",
+    minDifficulty: "Extrem",
+    aircraftCategory: "Jet",
+    aircraft: ["Businessjet", "Citation X", "Gulfstream"],
+    rule: "Sicherheit geht vor. Brich einen unstabilen Anflug sofort ab.",
+    story: (from, to) =>
+      `Ein VIP muss von ${from.city} nach ${to.city}. Das Wetter ist schlecht und der Zeitplan eng.`,
+    goals: () => [
+      "Fliege professionell und ohne harte Manöver.",
+      "Halte den Anflug ab 1000 ft stabil.",
+      "Lande sicher oder starte rechtzeitig durch.",
+    ],
+  },
+  {
+    title: "Buschflug mit knapper Piste",
+    type: "Buschflug",
+    minDifficulty: "Extrem",
+    aircraftCategory: "Propeller",
+    aircraft: ["Cessna 208 Caravan", "Kodiak 100", "DHC-2 Beaver"],
+    rule: "Nutze kurze Start- und Landetechnik.",
+    story: (from, to) =>
+      `Von ${from.city} geht es zu einer kleinen Piste nahe ${to.city}. Die Menschen dort warten auf Werkzeug und Ersatzteile.`,
+    goals: () => [
+      "Plane den Anflug sehr früh.",
+      "Halte die Geschwindigkeit exakt.",
+      "Setze kurz und kontrolliert auf.",
+    ],
+  },
+];
+
+const scenarioWeather = {
+  Einfach: ["Gutes Wetter mit klarer Sicht", "Leichte Wolken und ruhiger Wind", "Normales Reisewetter"],
+  Mittel: ["Leichter Seitenwind", "Wechselnde Wolken und etwas Dunst", "Leichter Regen im Zielgebiet"],
+  Schwer: ["Böiger Wind und tiefe Wolken", "Schlechte Sicht im Anflug", "Regen und spürbare Turbulenz"],
+  Extrem: ["Starker Seitenwind und schlechte Sicht", "Sturmfront nahe dem Ziel", "Tiefe Wolken mit starkem Regen"],
+};
+
+const scenarioPressure = {
+  Einfach: ["Kein besonderer Zeitdruck", "Normale Beladung", "Ruhiger Ablauf"],
+  Mittel: ["Leichter Zeitdruck", "Volle Kabine oder wichtige Fracht", "ATC gibt eine enge Ankunftszeit vor"],
+  Schwer: ["Knappe Reserve und schwieriges Ziel", "Hohe Beladung und anspruchsvoller Anflug", "Wetterfenster ist begrenzt"],
+  Extrem: ["Sehr enger Zeitplan", "Notfallauftrag mit Risiko", "Nur ein sicherer Anflugversuch empfohlen"],
+};
+
+const scenarioRules = {
+  Einfach: ["Nutze normale Verfahren.", "Fliege den Anflug sauber und ruhig.", "Halte genug Abstand zu schlechtem Wetter."],
+  Mittel: ["Autopilot ist erlaubt, aber der Endanflug soll von Hand sein.", "Plane Treibstoff und Sinkflug früh.", "Bleibe innerhalb sicherer Geschwindigkeiten."],
+  Schwer: ["Ein Durchstarten ist erlaubt.", "Kein hektischer Sinkflug kurz vor dem Ziel.", "Unter 1000 ft muss der Anflug stabil sein."],
+  Extrem: ["Bei unstabilem Anflug sofort durchstarten.", "Kein Autopilot im Endanflug.", "Sicherheit ist wichtiger als der Auftrag."],
+};
+
+function pickScenarioRoute(
+  requestedMinutes: number,
+  difficulty: AirportDifficulty,
+  aircraftCategory: AircraftCategory,
+) {
+  const routeForm: RouteForm = {
+    targetMinutes: String(requestedMinutes),
+    difficulty,
+    region: "Alle",
+    rules: "Alle",
+    aircraftCategory,
+    startAirport: "",
+    endAirport: "",
+    startAirportSearch: "",
+    endAirportSearch: "",
+  };
+
+  return createRoute(routeForm);
+}
+
+function scenarioTimeText(requestedMinutes: number, difficulty: AirportDifficulty) {
+  const time = requestedMinutes > 240 ? "längerer Flug" : requestedMinutes > 90 ? "mittlerer Flug" : "kurzer Flug";
+  const pressure = difficulty === "Extrem" || difficulty === "Schwer" ? "mit genauer Planung" : "mit normaler Vorbereitung";
+  return `${time} ${pressure}`;
 }
 
 function createRoute(form: RouteForm): GeneratedRoute {
