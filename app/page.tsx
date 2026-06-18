@@ -351,7 +351,7 @@ export default function Home() {
           </button>
           <button className="menuTile challengeTile" type="button" onClick={() => setActiveView("challenge")}>
             <span className="menuTileTitle">Challenge</span>
-            <strong>Kommt später</strong>
+            <strong>Zufällige Flugaufgaben erstellen</strong>
           </button>
           <button className="menuTile scenarioTile" type="button" onClick={() => setActiveView("scenario")}>
             <span className="menuTileTitle">Szenario</span>
@@ -546,7 +546,10 @@ export default function Home() {
   }
 
   if (activeView === "challenge") {
-    const challengeDuration = Number(challengeForm.durationMinutes);
+    const usesRouteDuration = challengeForm.mode === "Zur Route" && generatedRoute;
+    const challengeDuration = usesRouteDuration
+      ? generatedRoute.estimatedMinutes
+      : Number(challengeForm.durationMinutes);
     return (
       <main className="shell" data-theme={theme}>
         <section className="topline">
@@ -571,20 +574,34 @@ export default function Home() {
           <form className="panel routePanel" onSubmit={(event) => event.preventDefault()}>
             <div className="panelHeader">
               <h2>Challenge generieren</h2>
-              <p>Wähle Dauer, Schwierigkeit und ob die Aufgabe allein oder mit der Route läuft.</p>
+              <p>Wähle Schwierigkeit und ob die Aufgabe allein oder mit deiner Route läuft.</p>
             </div>
 
-            <Slider
-              label="Dauer"
-              unit=""
-              min="10"
-              max="180"
-              step="5"
-              value={challengeForm.durationMinutes}
-              displayValue={formatMinutes(challengeDuration)}
-              color={durationColor(challengeDuration * 5)}
-              onChange={(value) => setChallengeForm({ ...challengeForm, durationMinutes: value })}
-            />
+            {challengeForm.mode === "Eigenständig" ? (
+              <Slider
+                label="Dauer"
+                unit=""
+                min="10"
+                max="180"
+                step="5"
+                value={challengeForm.durationMinutes}
+                displayValue={formatMinutes(challengeDuration)}
+                color={durationColor(challengeDuration * 5)}
+                onChange={(value) => setChallengeForm({ ...challengeForm, durationMinutes: value })}
+              />
+            ) : (
+              <div className="routeDurationBox">
+                <span>Dauer</span>
+                <strong>
+                  {generatedRoute ? formatMinutes(generatedRoute.estimatedMinutes) : "Keine Route vorhanden"}
+                </strong>
+                <p>
+                  {generatedRoute
+                    ? "Die Challenge nutzt automatisch die Flugzeit deiner Route."
+                    : "Erstelle zuerst eine Route oder nutze den Modus Eigenständig."}
+                </p>
+              </div>
+            )}
 
             <div className="routeControls">
               <label>
@@ -1282,7 +1299,8 @@ function durationColor(value: number) {
 }
 
 function createChallenge(form: ChallengeForm, route: GeneratedRoute | null): GeneratedChallenge {
-  const durationMinutes = Number(form.durationMinutes);
+  const durationMinutes =
+    form.mode === "Zur Route" && route ? route.estimatedMinutes : Number(form.durationMinutes);
   const pool = challengeTemplates.filter((template) =>
     airportDifficultyRank[template.minDifficulty] <= airportDifficultyRank[form.difficulty],
   );
