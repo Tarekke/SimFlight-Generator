@@ -2165,7 +2165,7 @@ function toRadians(value: number) {
 }
 
 function formatMinutes(minutes: number) {
-  const rounded = Math.round(minutes);
+  const rounded = Math.max(10, Math.round(minutes / 10) * 10);
   const hours = Math.floor(rounded / 60);
   const rest = rounded % 60;
 
