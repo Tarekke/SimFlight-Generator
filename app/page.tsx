@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { majorCities } from "@/lib/locations/major-cities";
 import {
-  aircraftSpeedsKt,
   airportDifficultyRank,
   airports,
   type AircraftCategory,
@@ -1526,7 +1525,6 @@ function durationGoal(durationMinutes: number) {
 
 function createRoute(form: RouteForm): GeneratedRoute {
   const requestedMinutes = Number(form.targetMinutes);
-  const speedKt = aircraftSpeedsKt[form.aircraftCategory];
   const candidates = airports.filter((airport) => airportMatchesFilters(airport, form));
   const fixedStart = airports.find((airport) => airport.icao === form.startAirport);
   const fixedEnd = airports.find((airport) => airport.icao === form.endAirport);
@@ -1543,7 +1541,7 @@ function createRoute(form: RouteForm): GeneratedRoute {
       }
 
       const distanceNm = distanceBetweenAirports(from, to);
-      const estimatedMinutes = Math.round((distanceNm / speedKt) * 60);
+      const estimatedMinutes = estimateFlightMinutes(distanceNm, form.aircraftCategory);
 
       routeCandidates.push({
         from,
@@ -1563,7 +1561,7 @@ function createRoute(form: RouteForm): GeneratedRoute {
   let targetMinutes = bestTargetMinutes ?? requestedMinutes;
   let maxTimeDiff = routeTimeTolerance(targetMinutes);
   let wasAdjusted = bestTargetMinutes !== null && Math.abs(bestTargetMinutes - requestedMinutes) > maxTimeDiff;
-  let scoredRoutes = scoreRoutes(possibleRoutes, form, speedKt, targetMinutes, requestedMinutes, wasAdjusted);
+  let scoredRoutes = scoreRoutes(possibleRoutes, form, targetMinutes, requestedMinutes, wasAdjusted);
   let strictRoutes = scoredRoutes.filter((route) => route.timeDiff <= maxTimeDiff);
 
   if (strictRoutes.length === 0 && scoredRoutes.length > 0) {
@@ -1573,7 +1571,7 @@ function createRoute(form: RouteForm): GeneratedRoute {
     targetMinutes = nearestRoute.estimatedMinutes;
     maxTimeDiff = routeTimeTolerance(targetMinutes);
     wasAdjusted = true;
-    scoredRoutes = scoreRoutes(possibleRoutes, form, speedKt, targetMinutes, requestedMinutes, wasAdjusted);
+    scoredRoutes = scoreRoutes(possibleRoutes, form, targetMinutes, requestedMinutes, wasAdjusted);
     strictRoutes = scoredRoutes.filter((route) => route.timeDiff <= maxTimeDiff);
   }
 
@@ -1585,8 +1583,7 @@ function createRoute(form: RouteForm): GeneratedRoute {
     })
     .slice(0, 80);
 
-  const variedStrictRoutes = preferVariedRoutes(strictRoutes, maxTimeDiff);
-  const sortedStrictRoutes = variedStrictRoutes
+  const sortedStrictRoutes = strictRoutes
     .sort((first, second) => {
       const firstScore = (first as GeneratedRoute & { score: number }).score;
       const secondScore = (second as GeneratedRoute & { score: number }).score;
@@ -1601,7 +1598,10 @@ function createRoute(form: RouteForm): GeneratedRoute {
     from: airports[0],
     to: airports[1],
     distanceNm: distanceBetweenAirports(airports[0], airports[1]),
-    estimatedMinutes: Math.round((distanceBetweenAirports(airports[0], airports[1]) / speedKt) * 60),
+    estimatedMinutes: estimateFlightMinutes(
+      distanceBetweenAirports(airports[0], airports[1]),
+      form.aircraftCategory,
+    ),
     targetMinutes: requestedMinutes,
     requestedMinutes,
     difficulty: form.difficulty,
@@ -1612,19 +1612,14 @@ function createRoute(form: RouteForm): GeneratedRoute {
 function scoreRoutes(
   routes: GeneratedRoute[],
   form: RouteForm,
-  speedKt: number,
   targetMinutes: number,
   requestedMinutes: number,
   wasAdjusted: boolean,
 ) {
-  const targetDistance = (speedKt * targetMinutes) / 60;
-
   return routes.map((route) => {
     const timeDiff = Math.abs(route.estimatedMinutes - targetMinutes);
-    const distanceDiff = Math.abs(route.distanceNm - targetDistance);
     const score =
-      timeDiff * 3 +
-      distanceDiff +
+      timeDiff * 12 +
       difficultyPenalty(route.from, form.difficulty) +
       difficultyPenalty(route.to, form.difficulty);
 
@@ -1637,13 +1632,6 @@ function scoreRoutes(
       score,
     } as GeneratedRoute & { score: number; timeDiff: number };
   });
-}
-
-function preferVariedRoutes(routes: (GeneratedRoute & { score: number; timeDiff: number })[], maxTimeDiff: number) {
-  const minimumVisibleDiff = Math.min(Math.max(Math.round(maxTimeDiff * 0.2), 2), 8);
-  const variedRoutes = routes.filter((route) => route.timeDiff >= minimumVisibleDiff);
-
-  return variedRoutes.length >= 10 ? variedRoutes : routes;
 }
 
 function closestPossibleTargetMinutes(routes: GeneratedRoute[], requestedMinutes: number) {
@@ -1748,6 +1736,60 @@ function distanceBetweenAirports(first: Airport, second: Airport) {
     Math.cos(firstLat) * Math.cos(secondLat) * Math.sin(lonDiff / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return earthRadiusNm * c;
+}
+
+function estimateFlightMinutes(distanceNm: number, aircraftCategory: AircraftCategory) {
+  const routeFactor = routeDistanceFactor(distanceNm, aircraftCategory);
+  const plannedDistanceNm = distanceNm * routeFactor;
+  const cruiseSpeedKt = realisticCruiseSpeed(distanceNm, aircraftCategory);
+  const fixedMinutes = fixedFlightMinutes(distanceNm, aircraftCategory);
+  const cruiseMinutes = (plannedDistanceNm / cruiseSpeedKt) * 60;
+
+  return Math.max(10, Math.round(fixedMinutes + cruiseMinutes));
+}
+
+function routeDistanceFactor(distanceNm: number, aircraftCategory: AircraftCategory) {
+  if (aircraftCategory === "Jet") {
+    return distanceNm < 250 ? 1.16 : distanceNm < 900 ? 1.1 : 1.06;
+  }
+
+  if (aircraftCategory === "Turboprop") {
+    return distanceNm < 150 ? 1.12 : 1.07;
+  }
+
+  return distanceNm < 80 ? 1.08 : 1.04;
+}
+
+function realisticCruiseSpeed(distanceNm: number, aircraftCategory: AircraftCategory) {
+  if (aircraftCategory === "Jet") {
+    if (distanceNm < 250) {
+      return 285;
+    }
+
+    if (distanceNm < 900) {
+      return 385;
+    }
+
+    return 455;
+  }
+
+  if (aircraftCategory === "Turboprop") {
+    return distanceNm < 120 ? 205 : 255;
+  }
+
+  return distanceNm < 60 ? 95 : 118;
+}
+
+function fixedFlightMinutes(distanceNm: number, aircraftCategory: AircraftCategory) {
+  if (aircraftCategory === "Jet") {
+    return distanceNm < 250 ? 24 : 34;
+  }
+
+  if (aircraftCategory === "Turboprop") {
+    return distanceNm < 120 ? 14 : 20;
+  }
+
+  return distanceNm < 60 ? 8 : 12;
 }
 
 function toRadians(value: number) {
