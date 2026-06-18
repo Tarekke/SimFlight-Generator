@@ -1583,15 +1583,16 @@ function createRoute(form: RouteForm): GeneratedRoute {
       const secondScore = (second as GeneratedRoute & { score: number }).score;
       return firstScore - secondScore;
     })
-    .slice(0, 18);
+    .slice(0, 80);
 
-  const sortedStrictRoutes = strictRoutes
+  const variedStrictRoutes = preferVariedRoutes(strictRoutes, maxTimeDiff);
+  const sortedStrictRoutes = variedStrictRoutes
     .sort((first, second) => {
       const firstScore = (first as GeneratedRoute & { score: number }).score;
       const secondScore = (second as GeneratedRoute & { score: number }).score;
       return firstScore - secondScore;
     })
-    .slice(0, 18);
+    .slice(0, 80);
   const selectableRoutes = sortedStrictRoutes.length > 0 ? sortedStrictRoutes : sortedRoutes;
   const pickedRoute =
     selectableRoutes[Math.floor(Math.random() * Math.max(selectableRoutes.length, 1))];
@@ -1622,7 +1623,7 @@ function scoreRoutes(
     const timeDiff = Math.abs(route.estimatedMinutes - targetMinutes);
     const distanceDiff = Math.abs(route.distanceNm - targetDistance);
     const score =
-      timeDiff * 8 +
+      timeDiff * 3 +
       distanceDiff +
       difficultyPenalty(route.from, form.difficulty) +
       difficultyPenalty(route.to, form.difficulty);
@@ -1636,6 +1637,13 @@ function scoreRoutes(
       score,
     } as GeneratedRoute & { score: number; timeDiff: number };
   });
+}
+
+function preferVariedRoutes(routes: (GeneratedRoute & { score: number; timeDiff: number })[], maxTimeDiff: number) {
+  const minimumVisibleDiff = Math.min(Math.max(Math.round(maxTimeDiff * 0.2), 2), 8);
+  const variedRoutes = routes.filter((route) => route.timeDiff >= minimumVisibleDiff);
+
+  return variedRoutes.length >= 10 ? variedRoutes : routes;
 }
 
 function closestPossibleTargetMinutes(routes: GeneratedRoute[], requestedMinutes: number) {
