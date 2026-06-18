@@ -425,7 +425,7 @@ export default function Home() {
               label="Flugzeit"
               unit=""
               min="20"
-              max="900"
+              max="600"
               step="10"
               value={routeForm.targetMinutes}
               displayValue={formatMinutes(targetMinutes)}
@@ -1958,7 +1958,7 @@ function scoreRoutes(
 
 function realisticMaxRangeNm(aircraftCategory: AircraftCategory) {
   if (aircraftCategory === "Jet") {
-    return 3200;
+    return 4600;
   }
 
   if (aircraftCategory === "Turboprop") {
