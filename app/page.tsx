@@ -65,6 +65,8 @@ type GeneratedRoute = {
   distanceNm: number;
   estimatedMinutes: number;
   targetMinutes: number;
+  requestedMinutes?: number;
+  wasAdjusted?: boolean;
   difficulty: AirportDifficulty;
   aircraftCategory: AircraftCategory;
 };
@@ -1040,6 +1042,17 @@ function RouteResult({
         Schwierigkeit passend ausgewählt.
       </p>
 
+      {route.wasAdjusted && route.requestedMinutes ? (
+        <div className="routeAdjustNotice">
+          <strong>Zeit angepasst</strong>
+          <p>
+            Gewünscht waren {formatMinutes(route.requestedMinutes)}. Mit {route.aircraftCategory} und
+            den aktuellen Filtern war das nicht realistisch. Die App nutzt deshalb eine passende Route
+            mit etwa {formatMinutes(route.estimatedMinutes)}.
+          </p>
+        </div>
+      ) : null}
+
       <button className="secondaryActionButton" type="button" onClick={onOpenChallenge}>
         Challenge zu dieser Route erstellen
       </button>
@@ -1512,10 +1525,8 @@ function durationGoal(durationMinutes: number) {
 }
 
 function createRoute(form: RouteForm): GeneratedRoute {
-  const targetMinutes = Number(form.targetMinutes);
+  const requestedMinutes = Number(form.targetMinutes);
   const speedKt = aircraftSpeedsKt[form.aircraftCategory];
-  const targetDistance = (speedKt * targetMinutes) / 60;
-  const maxTimeDiff = routeTimeTolerance(targetMinutes);
   const candidates = airports.filter((airport) => airportMatchesFilters(airport, form));
   const fixedStart = airports.find((airport) => airport.icao === form.startAirport);
   const fixedEnd = airports.find((airport) => airport.icao === form.endAirport);
@@ -1533,34 +1544,40 @@ function createRoute(form: RouteForm): GeneratedRoute {
 
       const distanceNm = distanceBetweenAirports(from, to);
       const estimatedMinutes = Math.round((distanceNm / speedKt) * 60);
-      const timeDiff = Math.abs(estimatedMinutes - targetMinutes);
-      const distanceDiff = Math.abs(distanceNm - targetDistance);
-      const score =
-        distanceDiff +
-        difficultyPenalty(from, form.difficulty) +
-        difficultyPenalty(to, form.difficulty);
 
       routeCandidates.push({
         from,
         to,
         distanceNm,
         estimatedMinutes,
-        targetMinutes,
+        targetMinutes: requestedMinutes,
+        requestedMinutes,
         difficulty: form.difficulty,
         aircraftCategory: form.aircraftCategory,
-        timeDiff,
-        score,
-      } as GeneratedRoute & { score: number; timeDiff: number });
+      });
     }
   }
 
-  const strictRoutes = routeCandidates.filter((route) => {
-    const timeDiff = (route as GeneratedRoute & { timeDiff: number }).timeDiff;
-    return route.distanceNm > 20 && timeDiff <= maxTimeDiff;
-  });
+  const possibleRoutes = routeCandidates.filter((route) => route.distanceNm > 20);
+  const bestTargetMinutes = closestPossibleTargetMinutes(possibleRoutes, requestedMinutes);
+  let targetMinutes = bestTargetMinutes ?? requestedMinutes;
+  let maxTimeDiff = routeTimeTolerance(targetMinutes);
+  let wasAdjusted = bestTargetMinutes !== null && Math.abs(bestTargetMinutes - requestedMinutes) > maxTimeDiff;
+  let scoredRoutes = scoreRoutes(possibleRoutes, form, speedKt, targetMinutes, requestedMinutes, wasAdjusted);
+  let strictRoutes = scoredRoutes.filter((route) => route.timeDiff <= maxTimeDiff);
 
-  const sortedRoutes = routeCandidates
-    .filter((route) => route.distanceNm > 20)
+  if (strictRoutes.length === 0 && scoredRoutes.length > 0) {
+    const nearestRoute = scoredRoutes.reduce((bestRoute, route) =>
+      route.timeDiff < bestRoute.timeDiff ? route : bestRoute,
+    );
+    targetMinutes = nearestRoute.estimatedMinutes;
+    maxTimeDiff = routeTimeTolerance(targetMinutes);
+    wasAdjusted = true;
+    scoredRoutes = scoreRoutes(possibleRoutes, form, speedKt, targetMinutes, requestedMinutes, wasAdjusted);
+    strictRoutes = scoredRoutes.filter((route) => route.timeDiff <= maxTimeDiff);
+  }
+
+  const sortedRoutes = scoredRoutes
     .sort((first, second) => {
       const firstScore = (first as GeneratedRoute & { score: number }).score;
       const secondScore = (second as GeneratedRoute & { score: number }).score;
@@ -1584,10 +1601,63 @@ function createRoute(form: RouteForm): GeneratedRoute {
     to: airports[1],
     distanceNm: distanceBetweenAirports(airports[0], airports[1]),
     estimatedMinutes: Math.round((distanceBetweenAirports(airports[0], airports[1]) / speedKt) * 60),
-    targetMinutes,
+    targetMinutes: requestedMinutes,
+    requestedMinutes,
     difficulty: form.difficulty,
     aircraftCategory: form.aircraftCategory,
   };
+}
+
+function scoreRoutes(
+  routes: GeneratedRoute[],
+  form: RouteForm,
+  speedKt: number,
+  targetMinutes: number,
+  requestedMinutes: number,
+  wasAdjusted: boolean,
+) {
+  const targetDistance = (speedKt * targetMinutes) / 60;
+
+  return routes.map((route) => {
+    const timeDiff = Math.abs(route.estimatedMinutes - targetMinutes);
+    const distanceDiff = Math.abs(route.distanceNm - targetDistance);
+    const score =
+      timeDiff * 8 +
+      distanceDiff +
+      difficultyPenalty(route.from, form.difficulty) +
+      difficultyPenalty(route.to, form.difficulty);
+
+    return {
+      ...route,
+      targetMinutes,
+      requestedMinutes,
+      wasAdjusted,
+      timeDiff,
+      score,
+    } as GeneratedRoute & { score: number; timeDiff: number };
+  });
+}
+
+function closestPossibleTargetMinutes(routes: GeneratedRoute[], requestedMinutes: number) {
+  if (routes.length === 0) {
+    return null;
+  }
+
+  const sortedMinutes = routes
+    .map((route) => route.estimatedMinutes)
+    .sort((first, second) => first - second);
+  const minMinutes = sortedMinutes[0];
+  const maxMinutes = sortedMinutes[sortedMinutes.length - 1];
+
+  if (requestedMinutes < minMinutes) {
+    return minMinutes;
+  }
+
+  if (requestedMinutes > maxMinutes) {
+    return maxMinutes;
+  }
+
+  return requestedMinutes;
 }
 
 function routeTimeTolerance(targetMinutes: number) {
