@@ -1867,7 +1867,7 @@ function createRoute(form: RouteForm): GeneratedRoute {
         continue;
       }
 
-      const estimatedMinutes = estimateFlightMinutes(distanceNm, form.aircraftCategory, from, to);
+      const estimatedMinutes = estimateFlightMinutes(distanceNm, form.aircraftCategory);
 
       routeCandidates.push({
         from,
@@ -1923,8 +1923,6 @@ function createRoute(form: RouteForm): GeneratedRoute {
     estimatedMinutes: estimateFlightMinutes(
       distanceBetweenAirports(airports[0], airports[1]),
       form.aircraftCategory,
-      airports[0],
-      airports[1],
     ),
     targetMinutes: requestedMinutes,
     requestedMinutes,
@@ -2074,90 +2072,45 @@ function distanceBetweenAirports(first: Airport, second: Airport) {
   return earthRadiusNm * c;
 }
 
-function estimateFlightMinutes(
-  distanceNm: number,
-  aircraftCategory: AircraftCategory,
-  from: Airport,
-  to: Airport,
-) {
+function estimateFlightMinutes(distanceNm: number, aircraftCategory: AircraftCategory) {
   const routeFactor = routeDistanceFactor(distanceNm, aircraftCategory);
   const plannedDistanceNm = distanceNm * routeFactor;
-  const cruiseSpeedKt = realisticCruiseSpeed(distanceNm, aircraftCategory);
-  const fixedMinutes = fixedFlightMinutes(distanceNm, aircraftCategory, from, to);
-  const cruiseMinutes = (plannedDistanceNm / cruiseSpeedKt) * 60;
+  const averageSpeedKt = realisticAverageSpeed(distanceNm, aircraftCategory);
+  const cruiseMinutes = (plannedDistanceNm / averageSpeedKt) * 60;
 
-  return Math.max(10, Math.round(fixedMinutes + cruiseMinutes));
+  return Math.max(10, Math.round(cruiseMinutes));
 }
 
 function routeDistanceFactor(distanceNm: number, aircraftCategory: AircraftCategory) {
   if (aircraftCategory === "Jet") {
-    return distanceNm < 250 ? 1.16 : distanceNm < 900 ? 1.1 : 1.06;
+    return distanceNm < 250 ? 1.08 : distanceNm < 900 ? 1.06 : 1.04;
   }
 
   if (aircraftCategory === "Turboprop") {
-    return distanceNm < 150 ? 1.12 : 1.07;
+    return distanceNm < 150 ? 1.06 : 1.04;
   }
 
-  return distanceNm < 80 ? 1.08 : 1.04;
+  return distanceNm < 80 ? 1.04 : 1.02;
 }
 
-function realisticCruiseSpeed(distanceNm: number, aircraftCategory: AircraftCategory) {
+function realisticAverageSpeed(distanceNm: number, aircraftCategory: AircraftCategory) {
   if (aircraftCategory === "Jet") {
     if (distanceNm < 250) {
-      return 285;
+      return 255;
     }
 
     if (distanceNm < 900) {
-      return 385;
+      return 370;
     }
 
     return 455;
   }
 
   if (aircraftCategory === "Turboprop") {
-    return distanceNm < 120 ? 205 : 255;
+    return distanceNm < 120 ? 175 : 245;
   }
 
-  return distanceNm < 60 ? 95 : 118;
-}
-
-function fixedFlightMinutes(
-  distanceNm: number,
-  aircraftCategory: AircraftCategory,
-  from: Airport,
-  to: Airport,
-) {
-  const airportDelay =
-    airportComplexityMinutes(from, aircraftCategory) + airportComplexityMinutes(to, aircraftCategory);
-  const internationalDelay = from.country === to.country ? 0 : aircraftCategory === "Jet" ? 8 : 4;
-  const longRouteDelay = distanceNm > 1800 ? 12 : distanceNm > 900 ? 7 : 0;
-
-  if (aircraftCategory === "Jet") {
-    return (distanceNm < 250 ? 24 : 34) + airportDelay + internationalDelay + longRouteDelay;
-  }
-
-  if (aircraftCategory === "Turboprop") {
-    return (distanceNm < 120 ? 14 : 20) + airportDelay + internationalDelay + longRouteDelay;
-  }
-
-  return (distanceNm < 60 ? 8 : 12) + airportDelay + internationalDelay;
-}
-
-function airportComplexityMinutes(airport: Airport, aircraftCategory: AircraftCategory) {
-  const base =
-    airport.difficulty === "Extrem"
-      ? 7
-      : airport.difficulty === "Schwer"
-        ? 5
-        : airport.difficulty === "Mittel"
-          ? 3
-          : 1;
-
-  if (aircraftCategory === "Jet" && airport.runwayM >= 3000) {
-    return base + 3;
-  }
-
-  return base;
+  return distanceNm < 60 ? 90 : 115;
 }
 
 function toRadians(value: number) {
