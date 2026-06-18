@@ -1090,8 +1090,6 @@ function RouteResult({
   result: ApiResult | null;
   route: GeneratedRoute;
 }) {
-  const diff = Math.abs(route.estimatedMinutes - route.targetMinutes);
-
   return (
     <div className="routeResult">
       <div className="routeAirports">
@@ -1109,10 +1107,6 @@ function RouteResult({
           <strong>{formatMinutes(route.estimatedMinutes)}</strong>
         </div>
         <div>
-          <span>Abweichung</span>
-          <strong>{formatMinutes(diff)}</strong>
-        </div>
-        <div>
           <span>Schwierigkeit</span>
           <strong>{route.difficulty}</strong>
         </div>
@@ -1122,17 +1116,6 @@ function RouteResult({
         Flugzeug: {route.aircraftCategory}. Die Route wird nach Entfernung, Flugzeit und
         Schwierigkeit passend ausgewählt.
       </p>
-
-      {route.wasAdjusted && route.requestedMinutes ? (
-        <div className="routeAdjustNotice">
-          <strong>Zeit angepasst</strong>
-          <p>
-            Gewünscht waren {formatMinutes(route.requestedMinutes)}. Mit {route.aircraftCategory} und
-            den aktuellen Filtern war das nicht realistisch. Die App nutzt deshalb eine passende Route
-            mit etwa {formatMinutes(route.estimatedMinutes)}.
-          </p>
-        </div>
-      ) : null}
 
       <button className="secondaryActionButton" type="button" onClick={onOpenChallenge}>
         Challenge zu dieser Route erstellen
