@@ -1870,6 +1870,7 @@ function createRoute(form: RouteForm): GeneratedRoute {
 
   const startAirports = fixedStart ? [fixedStart] : usableAirports;
   const endAirports = fixedEnd ? [fixedEnd] : usableAirports;
+  const maxRangeNm = realisticMaxRangeNm(form.aircraftCategory);
 
   for (const from of startAirports) {
     for (const to of endAirports) {
@@ -1878,6 +1879,11 @@ function createRoute(form: RouteForm): GeneratedRoute {
       }
 
       const distanceNm = distanceBetweenAirports(from, to);
+
+      if (distanceNm > maxRangeNm) {
+        continue;
+      }
+
       const estimatedMinutes = estimateFlightMinutes(distanceNm, form.aircraftCategory);
 
       routeCandidates.push({
@@ -1920,14 +1926,7 @@ function createRoute(form: RouteForm): GeneratedRoute {
     })
     .slice(0, 80);
 
-  const sortedStrictRoutes = strictRoutes
-    .sort((first, second) => {
-      const firstScore = (first as GeneratedRoute & { score: number }).score;
-      const secondScore = (second as GeneratedRoute & { score: number }).score;
-      return firstScore - secondScore;
-    })
-    .slice(0, 80);
-  const selectableRoutes = sortedStrictRoutes.length > 0 ? sortedStrictRoutes : sortedRoutes;
+  const selectableRoutes = strictRoutes.length > 0 ? spreadRouteChoices(strictRoutes, maxTimeDiff) : sortedRoutes;
   const pickedRoute =
     selectableRoutes[Math.floor(Math.random() * Math.max(selectableRoutes.length, 1))];
 
@@ -1944,6 +1943,31 @@ function createRoute(form: RouteForm): GeneratedRoute {
     difficulty: form.difficulty,
     aircraftCategory: form.aircraftCategory,
   };
+}
+
+function spreadRouteChoices(
+  routes: (GeneratedRoute & { score: number; timeDiff: number })[],
+  maxTimeDiff: number,
+) {
+  const sortedRoutes = [...routes].sort((first, second) => {
+    const firstScore = first.score;
+    const secondScore = second.score;
+    return firstScore - secondScore;
+  });
+  const closeRoutes = sortedRoutes.filter((route) => route.timeDiff <= Math.max(6, maxTimeDiff * 0.45));
+  const normalRoutes = sortedRoutes.filter(
+    (route) => route.timeDiff > Math.max(4, maxTimeDiff * 0.25) && route.timeDiff <= maxTimeDiff,
+  );
+
+  if (normalRoutes.length >= 20) {
+    return normalRoutes.slice(0, 120);
+  }
+
+  if (closeRoutes.length >= 20) {
+    return closeRoutes.slice(0, 80);
+  }
+
+  return sortedRoutes.slice(0, 80);
 }
 
 function scoreRoutes(
@@ -1969,6 +1993,18 @@ function scoreRoutes(
       score,
     } as GeneratedRoute & { score: number; timeDiff: number };
   });
+}
+
+function realisticMaxRangeNm(aircraftCategory: AircraftCategory) {
+  if (aircraftCategory === "Jet") {
+    return 3200;
+  }
+
+  if (aircraftCategory === "Turboprop") {
+    return 1200;
+  }
+
+  return 550;
 }
 
 function closestPossibleTargetMinutes(routes: GeneratedRoute[], requestedMinutes: number) {
