@@ -407,6 +407,73 @@ h3 {
   line-height: 1.45;
 }
 
+.challengeResult {
+  display: grid;
+  gap: 16px;
+}
+
+.challengeHero {
+  border: 1px solid rgba(56, 189, 248, 0.42);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(168, 85, 247, 0.12)),
+    var(--status-bg);
+  padding: 16px;
+}
+
+.challengeHero span {
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.challengeHero h2 {
+  margin: 6px 0 8px;
+  font-size: 1.7rem;
+}
+
+.challengeHero p,
+.routeNote {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.challengeInfoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.challengeBox {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-bg);
+  padding: 14px;
+}
+
+.challengeBox h3 {
+  color: var(--accent-strong);
+}
+
+.challengeBox ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.challengeBox li,
+.challengeBox p {
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.challengeBox p {
+  margin-bottom: 8px;
+}
+
 .successBox {
   border-color: rgba(34, 197, 94, 0.55);
   background: rgba(34, 197, 94, 0.12);
@@ -606,6 +673,22 @@ input[type="range"]::-moz-range-thumb {
   color: white;
 }
 
+.secondaryActionButton {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(56, 189, 248, 0.55);
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(168, 85, 247, 0.18));
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.secondaryActionButton:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
 .secondaryButton {
   background: linear-gradient(135deg, #0b1f3a, #1d4ed8);
   color: white;
@@ -707,6 +790,7 @@ button:disabled {
   .airportPickerGrid,
   .routeControls,
   .routeStats,
+  .challengeInfoGrid,
   .presetRow,
   .timeGrid {
     grid-template-columns: 1fr;

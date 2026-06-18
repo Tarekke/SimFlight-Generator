@@ -51,6 +51,14 @@ type RouteForm = {
   endAirportSearch: string;
 };
 
+type ChallengeMode = "Eigenständig" | "Zur Route";
+
+type ChallengeForm = {
+  durationMinutes: string;
+  difficulty: AirportDifficulty;
+  mode: ChallengeMode;
+};
+
 type GeneratedRoute = {
   from: Airport;
   to: Airport;
@@ -59,6 +67,22 @@ type GeneratedRoute = {
   targetMinutes: number;
   difficulty: AirportDifficulty;
   aircraftCategory: AircraftCategory;
+};
+
+type GeneratedChallenge = {
+  title: string;
+  mode: ChallengeMode;
+  durationMinutes: number;
+  difficulty: AirportDifficulty;
+  summary: string;
+  aircraft: string;
+  weather: string;
+  time: string;
+  location: string;
+  goals: string[];
+  rules: string[];
+  success: string[];
+  routeNote?: string;
 };
 
 const initialForm: WeatherForm = {
@@ -86,6 +110,12 @@ const initialRouteForm: RouteForm = {
   endAirport: "",
   startAirportSearch: "",
   endAirportSearch: "",
+};
+
+const initialChallengeForm: ChallengeForm = {
+  durationMinutes: "45",
+  difficulty: "Mittel",
+  mode: "Eigenständig",
 };
 
 const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherForm }[] = [
@@ -150,10 +180,13 @@ export default function Home() {
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [form, setForm] = useState<WeatherForm>(initialForm);
   const [routeForm, setRouteForm] = useState<RouteForm>(initialRouteForm);
+  const [challengeForm, setChallengeForm] = useState<ChallengeForm>(initialChallengeForm);
   const [generatedRoute, setGeneratedRoute] = useState<GeneratedRoute | null>(null);
+  const [generatedChallenge, setGeneratedChallenge] = useState<GeneratedChallenge | null>(null);
   const [status, setStatus] = useState<ApiResult | null>(null);
   const [sendResult, setSendResult] = useState<ApiResult | null>(null);
   const [routeApplyResult, setRouteApplyResult] = useState<ApiResult | null>(null);
+  const [challengeApplyResult, setChallengeApplyResult] = useState<ApiResult | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
@@ -243,6 +276,10 @@ export default function Home() {
     setRouteApplyResult(null);
   }
 
+  function generateChallenge() {
+    setGeneratedChallenge(createChallenge(challengeForm, generatedRoute));
+  }
+
   async function applyRouteToXPlane() {
     if (!generatedRoute) {
       return;
@@ -261,6 +298,32 @@ export default function Home() {
     const data = (await response.json()) as ApiResult;
 
     setRouteApplyResult(data);
+    setIsApplyingRoute(false);
+  }
+
+  async function applyRouteAndChallengeToXPlane() {
+    if (!generatedRoute || !generatedChallenge) {
+      return;
+    }
+
+    setIsApplyingRoute(true);
+    setChallengeApplyResult(null);
+
+    const response = await fetch("/api/xplane/route", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(generatedRoute),
+    });
+    const data = (await response.json()) as ApiResult;
+
+    setChallengeApplyResult({
+      ...data,
+      message: data.ok
+        ? `Route ${generatedRoute.from.icao} nach ${generatedRoute.to.icao} wurde gesendet. Challenge: ${generatedChallenge.title}.`
+        : data.message,
+    });
     setIsApplyingRoute(false);
   }
 
@@ -466,6 +529,10 @@ export default function Home() {
               <RouteResult
                 isApplying={isApplyingRoute}
                 onApply={applyRouteToXPlane}
+                onOpenChallenge={() => {
+                  setChallengeForm({ ...challengeForm, mode: "Zur Route" });
+                  setActiveView("challenge");
+                }}
                 result={routeApplyResult}
                 route={generatedRoute}
               />
@@ -478,15 +545,118 @@ export default function Home() {
     );
   }
 
-  if (activeView === "challenge" || activeView === "scenario") {
-    const title = activeView === "challenge" ? "Challenge" : "Szenario";
-
+  if (activeView === "challenge") {
+    const challengeDuration = Number(challengeForm.durationMinutes);
     return (
       <main className="shell" data-theme={theme}>
         <section className="topline">
           <div>
             <p className="eyebrow">SimFlight Generator</p>
-            <h1>{title}</h1>
+            <h1>Challenge</h1>
+          </div>
+          <div className="topActions">
+            <button className="secondaryButton" type="button" onClick={toggleTheme}>
+              {themeButtonLabel}
+            </button>
+            <button className="secondaryButton" type="button" onClick={() => setActiveView("route")}>
+              Zur Route
+            </button>
+            <button className="secondaryButton" type="button" onClick={() => setActiveView("menu")}>
+              Zum Menü
+            </button>
+          </div>
+        </section>
+
+        <section className="routeWorkspace">
+          <form className="panel routePanel" onSubmit={(event) => event.preventDefault()}>
+            <div className="panelHeader">
+              <h2>Challenge generieren</h2>
+              <p>Wähle Dauer, Schwierigkeit und ob die Aufgabe allein oder mit der Route läuft.</p>
+            </div>
+
+            <Slider
+              label="Dauer"
+              unit=""
+              min="10"
+              max="180"
+              step="5"
+              value={challengeForm.durationMinutes}
+              displayValue={formatMinutes(challengeDuration)}
+              color={durationColor(challengeDuration * 5)}
+              onChange={(value) => setChallengeForm({ ...challengeForm, durationMinutes: value })}
+            />
+
+            <div className="routeControls">
+              <label>
+                Schwierigkeit
+                <select
+                  value={challengeForm.difficulty}
+                  onChange={(event) =>
+                    setChallengeForm({
+                      ...challengeForm,
+                      difficulty: event.target.value as AirportDifficulty,
+                    })
+                  }
+                >
+                  <option>Einfach</option>
+                  <option>Mittel</option>
+                  <option>Schwer</option>
+                  <option>Extrem</option>
+                </select>
+              </label>
+
+              <label>
+                Modus
+                <select
+                  value={challengeForm.mode}
+                  onChange={(event) =>
+                    setChallengeForm({ ...challengeForm, mode: event.target.value as ChallengeMode })
+                  }
+                >
+                  <option>Eigenständig</option>
+                  <option>Zur Route</option>
+                </select>
+              </label>
+            </div>
+
+            {challengeForm.mode === "Zur Route" && !generatedRoute ? (
+              <div className="note">
+                Es gibt noch keine Route. Die Challenge wird trotzdem erstellt. Sie kann später mit
+                einer Route kombiniert werden.
+              </div>
+            ) : null}
+
+            <button className="primaryButton" type="button" onClick={generateChallenge}>
+              Challenge generieren
+            </button>
+          </form>
+
+          <aside className="panel routeResultPanel">
+            <h2>Aufgabe</h2>
+            {generatedChallenge ? (
+              <ChallengeResult
+                applyResult={challengeApplyResult}
+                challenge={generatedChallenge}
+                hasRoute={Boolean(generatedRoute)}
+                isApplying={isApplyingRoute}
+                onApplyRouteAndChallenge={applyRouteAndChallengeToXPlane}
+              />
+            ) : (
+              <p className="muted">Noch keine Challenge generiert.</p>
+            )}
+          </aside>
+        </section>
+      </main>
+    );
+  }
+
+  if (activeView === "scenario") {
+    return (
+      <main className="shell" data-theme={theme}>
+        <section className="topline">
+          <div>
+            <p className="eyebrow">SimFlight Generator</p>
+            <h1>Szenario</h1>
           </div>
           <div className="topActions">
             <button className="secondaryButton" type="button" onClick={toggleTheme}>
@@ -499,7 +669,7 @@ export default function Home() {
         </section>
 
         <section className="panel placeholderPanel">
-          <h2>{title} kommt später</h2>
+          <h2>Szenario kommt später</h2>
           <p className="muted">Diese Ansicht ist schon klickbar. Den Inhalt bauen wir später.</p>
         </section>
       </main>
@@ -810,11 +980,13 @@ function StatusBlock({
 function RouteResult({
   isApplying,
   onApply,
+  onOpenChallenge,
   result,
   route,
 }: {
   isApplying: boolean;
   onApply: () => void;
+  onOpenChallenge: () => void;
   result: ApiResult | null;
   route: GeneratedRoute;
 }) {
@@ -851,6 +1023,10 @@ function RouteResult({
         Schwierigkeit passend ausgewählt.
       </p>
 
+      <button className="secondaryActionButton" type="button" onClick={onOpenChallenge}>
+        Challenge zu dieser Route erstellen
+      </button>
+
       <button className="primaryButton" disabled={isApplying} type="button" onClick={onApply}>
         {isApplying ? "Wird an X-Plane gesendet..." : "In X-Plane übernehmen"}
       </button>
@@ -882,6 +1058,108 @@ function AirportCard({ label, airport }: { label: string; airport: Airport }) {
       </small>
       <small>{airport.runwayM} m Bahn</small>
       <small>{airport.notes}</small>
+    </div>
+  );
+}
+
+function ChallengeResult({
+  applyResult,
+  challenge,
+  hasRoute,
+  isApplying,
+  onApplyRouteAndChallenge,
+}: {
+  applyResult: ApiResult | null;
+  challenge: GeneratedChallenge;
+  hasRoute: boolean;
+  isApplying: boolean;
+  onApplyRouteAndChallenge: () => void;
+}) {
+  return (
+    <div className="challengeResult">
+      <div className="challengeHero">
+        <span>{challenge.mode}</span>
+        <h2>{challenge.title}</h2>
+        <p>{challenge.summary}</p>
+      </div>
+
+      <div className="routeStats">
+        <div>
+          <span>Dauer</span>
+          <strong>{formatMinutes(challenge.durationMinutes)}</strong>
+        </div>
+        <div>
+          <span>Schwierigkeit</span>
+          <strong>{challenge.difficulty}</strong>
+        </div>
+        <div>
+          <span>Flugzeug</span>
+          <strong>{challenge.aircraft}</strong>
+        </div>
+        <div>
+          <span>Ort</span>
+          <strong>{challenge.location}</strong>
+        </div>
+      </div>
+
+      {challenge.routeNote ? <p className="routeNote">{challenge.routeNote}</p> : null}
+
+      <div className="challengeInfoGrid">
+        <ChallengeList title="Ziele" items={challenge.goals} />
+        <ChallengeList title="Regeln" items={challenge.rules} />
+        <ChallengeList title="Erfolg" items={challenge.success} />
+        <div className="challengeBox">
+          <h3>Bedingungen</h3>
+          <p>
+            <strong>Wetter:</strong> {challenge.weather}
+          </p>
+          <p>
+            <strong>Zeit:</strong> {challenge.time}
+          </p>
+        </div>
+      </div>
+
+      {hasRoute ? (
+        <button
+          className="primaryButton"
+          disabled={isApplying}
+          type="button"
+          onClick={onApplyRouteAndChallenge}
+        >
+          {isApplying ? "Wird an X-Plane gesendet..." : "Route und Challenge übernehmen"}
+        </button>
+      ) : (
+        <div className="note">
+          Diese Challenge ist eigenständig. Ohne Route gibt es nichts Sinnvolles, was X-Plane
+          automatisch laden muss.
+        </div>
+      )}
+
+      {applyResult ? (
+        <div className={applyResult.ok ? "routeApplyMessage successBox" : "routeApplyMessage warningBox"}>
+          <strong>{applyResult.ok ? "Gesendet" : "Fehler"}</strong>
+          <p>{applyResult.message}</p>
+          {applyResult.ok ? (
+            <small>
+              Die Challenge-Regeln stehen hier in der App. X-Plane bekommt die Route, Position,
+              Uhrzeit und Wetter.
+            </small>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ChallengeList({ items, title }: { items: string[]; title: string }) {
+  return (
+    <div className="challengeBox">
+      <h3>{title}</h3>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -1001,6 +1279,218 @@ function regionColor(value: number) {
 
 function durationColor(value: number) {
   return colorScale(value, 20, 900, ["#16a34a", "#0ea5e9", "#6366f1", "#a855f7", "#ef4444"]);
+}
+
+function createChallenge(form: ChallengeForm, route: GeneratedRoute | null): GeneratedChallenge {
+  const durationMinutes = Number(form.durationMinutes);
+  const pool = challengeTemplates.filter((template) =>
+    airportDifficultyRank[template.minDifficulty] <= airportDifficultyRank[form.difficulty],
+  );
+  const template = pickRandom(pool);
+  const weather = pickByDifficulty(challengeWeather, form.difficulty);
+  const aircraft = pickByDifficulty(challengeAircraft, form.difficulty);
+  const extraRule = pickByDifficulty(challengeRules, form.difficulty);
+  const extraGoal = pickByDifficulty(challengeGoals, form.difficulty);
+  const location =
+    form.mode === "Zur Route" && route
+      ? `${route.from.icao} nach ${route.to.icao}`
+      : pickRandom(challengeLocations);
+  const routeNote =
+    form.mode === "Zur Route" && route
+      ? `Zusatzaufgabe für deine Route ${route.from.icao} nach ${route.to.icao}.`
+      : form.mode === "Zur Route"
+        ? "Noch keine Route vorhanden. Diese Aufgabe kann später zu einer Route gelegt werden."
+        : undefined;
+
+  return {
+    title: template.title,
+    mode: form.mode,
+    durationMinutes,
+    difficulty: form.difficulty,
+    summary: template.summary,
+    aircraft,
+    weather,
+    time: pickByDifficulty(challengeTimes, form.difficulty),
+    location,
+    goals: [template.goal, extraGoal, durationGoal(durationMinutes)],
+    rules: [template.rule, extraRule],
+    success: [template.success, "Flug stabil beenden und nicht neu laden.", "Nach dem Flug kurz bewerten: geschafft, knapp oder gescheitert."],
+    routeNote,
+  };
+}
+
+const challengeTemplates: {
+  title: string;
+  minDifficulty: AirportDifficulty;
+  summary: string;
+  goal: string;
+  rule: string;
+  success: string;
+}[] = [
+  {
+    title: "Präzisionslandung",
+    minDifficulty: "Einfach",
+    summary: "Lande so genau wie möglich auf dem Zielpunkt der Bahn.",
+    goal: "Setze im ersten Drittel der Landebahn auf.",
+    rule: "Kein Durchstarten, außer der Anflug ist klar unsicher.",
+    success: "Landung bleibt auf der Bahn und unter Kontrolle.",
+  },
+  {
+    title: "Ohne Autopilot",
+    minDifficulty: "Einfach",
+    summary: "Fliege die ganze Aufgabe von Hand.",
+    goal: "Halte Höhe, Kurs und Geschwindigkeit ruhig.",
+    rule: "Autopilot bleibt während der ganzen Challenge aus.",
+    success: "Anflug und Landung werden ohne Autopilot geschafft.",
+  },
+  {
+    title: "Kurzer Frachtauftrag",
+    minDifficulty: "Einfach",
+    summary: "Eine kleine Fracht muss pünktlich und sicher ankommen.",
+    goal: "Fliege sauber und vermeide harte Manöver.",
+    rule: "Sinkrate bei der Landung möglichst niedrig halten.",
+    success: "Fracht kommt ohne harte Landung an.",
+  },
+  {
+    title: "Passagierkomfort",
+    minDifficulty: "Einfach",
+    summary: "Der Flug soll ruhig und angenehm bleiben.",
+    goal: "Vermeide starke Kurven und große Höhenwechsel.",
+    rule: "Keine Manöver über 30 Grad Schräglage.",
+    success: "Der Flug bleibt ruhig bis zur Landung.",
+  },
+  {
+    title: "VFR-Sichtflug",
+    minDifficulty: "Mittel",
+    summary: "Navigiere mit Sicht nach draußen und ohne wilde Abkürzungen.",
+    goal: "Folge Küste, Fluss, Straße oder Tal.",
+    rule: "GPS nur zur Kontrolle nutzen.",
+    success: "Zielgebiet ohne große Umwege erreichen.",
+  },
+  {
+    title: "Seitenwind-Training",
+    minDifficulty: "Mittel",
+    summary: "Trainiere Start und Landung bei spürbarem Seitenwind.",
+    goal: "Halte die Mittellinie beim Start und bei der Landung.",
+    rule: "Nicht auf eine andere Bahn wechseln.",
+    success: "Flugzeug bleibt nach dem Aufsetzen sauber auf der Bahn.",
+  },
+  {
+    title: "Zeitdruck",
+    minDifficulty: "Mittel",
+    summary: "Du hast ein enges Zeitfenster und musst trotzdem sauber fliegen.",
+    goal: "Komme innerhalb von 5 Minuten um die Zielzeit an.",
+    rule: "Keine unrealistischen Sturzflüge zum Aufholen.",
+    success: "Zielzeit erreicht und sichere Landung gemacht.",
+  },
+  {
+    title: "Schlechte Sicht",
+    minDifficulty: "Schwer",
+    summary: "Der Anflug ist durch Dunst, Wolken oder Regen schwerer.",
+    goal: "Bleibe ruhig und fliege einen stabilen Endanflug.",
+    rule: "Unter 500 ft keine großen Kurskorrekturen mehr.",
+    success: "Sichtanflug oder Instrumentenanflug wird stabil beendet.",
+  },
+  {
+    title: "Treibstoff knapp",
+    minDifficulty: "Schwer",
+    summary: "Plane sparsam. Du hast keine großen Reserven.",
+    goal: "Fliege ohne unnötige Umwege.",
+    rule: "Maximal ein Fehlanflug ist erlaubt.",
+    success: "Landung vor Ablauf der Challenge-Zeit.",
+  },
+  {
+    title: "Bergtal-Anflug",
+    minDifficulty: "Schwer",
+    summary: "Fliege in schwierigem Gelände mit wenig Platz.",
+    goal: "Folge dem Gelände und halte sichere Höhe.",
+    rule: "Keine tiefen Kurven in engen Tälern.",
+    success: "Landung ohne Terrain-Warnung oder Kontrollverlust.",
+  },
+  {
+    title: "Notfall: Motorproblem",
+    minDifficulty: "Extrem",
+    summary: "Ein Triebwerk liefert nur noch begrenzte Leistung.",
+    goal: "Fliege sparsam und wähle einen sicheren Anflug.",
+    rule: "Steigflüge nur wenn wirklich nötig.",
+    success: "Sichere Landung trotz Leistungsproblem.",
+  },
+  {
+    title: "Sturmfront",
+    minDifficulty: "Extrem",
+    summary: "Wetter und Wind machen den Flug sehr anspruchsvoll.",
+    goal: "Bleibe kontrolliert und brich zu riskante Anflüge ab.",
+    rule: "Nur ein Durchstarten ist erlaubt.",
+    success: "Landung ohne Kontrollverlust.",
+  },
+];
+
+const challengeWeather = {
+  Einfach: ["Klar, gute Sicht, leichter Wind", "Hohe Wolken, ruhige Luft", "Sommerliches Wetter mit 8 kt Wind"],
+  Mittel: ["Leichter Regen, 15 kt Wind", "Dunst, mittlere Wolken, etwas Turbulenz", "Windig mit 20 kt Seitenwind"],
+  Schwer: ["Schlechte Sicht, tiefe Wolken, 28 kt Wind", "Regen und Turbulenz im Anflug", "Wechselhaftes Wetter mit Böen"],
+  Extrem: ["Sturm, starke Böen und sehr schlechte Sicht", "Tiefe Wolken, Regen, Turbulenz und Seitenwind", "Morgendämmerung mit Sturmfront"],
+};
+
+const challengeAircraft = {
+  Einfach: ["Cessna 172", "kleiner Propellerflieger", "leichter Trainer"],
+  Mittel: ["King Air", "Turboprop", "kleiner Businessjet"],
+  Schwer: ["Regionaljet", "Turboprop mit voller Beladung", "kleiner Jet"],
+  Extrem: ["schwer beladener Jet", "einmotoriger Flieger im Grenzbereich", "Businessjet bei schlechtem Wetter"],
+};
+
+const challengeRules = {
+  Einfach: ["Nutze normale Checklisten.", "Fliege mit ruhigen Steuerbewegungen.", "Keine Pause während Start und Landung."],
+  Mittel: ["Autopilot erst über 3000 ft erlaubt.", "Fliege den Endanflug komplett von Hand.", "Keine Außenansicht im Endanflug."],
+  Schwer: ["Ein Fehlanflug ist erlaubt.", "Kein Autopilot unter 5000 ft.", "Landeklappen erst setzen, wenn der Anflug stabil ist."],
+  Extrem: ["Kein Autopilot während der ganzen Mission.", "Keine zweite Chance nach Kontrollverlust.", "Bei unstabilem Anflug sofort durchstarten."],
+};
+
+const challengeGoals = {
+  Einfach: ["Halte die Zielhöhe mit maximal 300 ft Abweichung.", "Lande weich und mittig.", "Bleibe die ganze Zeit unter Kontrolle."],
+  Mittel: ["Halte Geschwindigkeit im Endanflug sauber.", "Plane einen klaren Sinkflug.", "Vermeide unnötige Kurswechsel."],
+  Schwer: ["Halte den Anflug ab 1000 ft stabil.", "Triff den Sinkpfad ohne hektische Korrektur.", "Nutze Wind und Gelände bewusst."],
+  Extrem: ["Treffe harte Entscheidungen früh.", "Rette den Flug ohne unrealistische Manöver.", "Behalte auch bei Stress klare Prioritäten."],
+};
+
+const challengeTimes = {
+  Einfach: ["Mittag", "Vormittag", "später Nachmittag"],
+  Mittel: ["früher Morgen", "Sonnenuntergang", "bewölkter Nachmittag"],
+  Schwer: ["Dämmerung", "später Abend", "grauer Morgen"],
+  Extrem: ["Nacht", "Morgendämmerung", "Sturm kurz vor Sonnenuntergang"],
+};
+
+const challengeLocations = [
+  "Alpenregion",
+  "Küste",
+  "Insel-Flughafen",
+  "Großstadt-Flughafen",
+  "kurze Landebahn",
+  "Bergflugplatz",
+  "abgelegene Region",
+  "enger Talflug",
+  "nordische Küste",
+  "Wüstenregion",
+];
+
+function pickByDifficulty(options: Record<AirportDifficulty, string[]>, difficulty: AirportDifficulty) {
+  return pickRandom(options[difficulty]);
+}
+
+function pickRandom<T>(items: T[]) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function durationGoal(durationMinutes: number) {
+  if (durationMinutes <= 30) {
+    return "Kurze Aufgabe: schnell vorbereiten und ohne Hektik fliegen.";
+  }
+
+  if (durationMinutes <= 90) {
+    return "Mittlere Aufgabe: Flug sauber planen und konzentriert bleiben.";
+  }
+
+  return "Lange Aufgabe: Energie, Wetter und Anflug früh planen.";
 }
 
 function createRoute(form: RouteForm): GeneratedRoute {
