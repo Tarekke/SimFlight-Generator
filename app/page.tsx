@@ -2124,18 +2124,18 @@ function formatMinutes(minutes: number) {
   return `${hours} h ${rest.toString().padStart(2, "0")} min`;
 }
 
-function xplaneApiUrl(path: string) {
+function xplaneApiUrls(path: string) {
   if (typeof window === "undefined") {
-    return path;
+    return [path];
   }
 
   const isLocalApp = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 
   if (isLocalApp) {
-    return path;
+    return [path];
   }
 
-  return `http://127.0.0.1:3000${path}`;
+  return [`http://localhost:3000${path}`, `http://127.0.0.1:3000${path}`];
 }
 
 async function fetchXPlaneJson(path: string, init?: RequestInit, timeoutMs = 45000): Promise<ApiResult> {
@@ -2143,12 +2143,25 @@ async function fetchXPlaneJson(path: string, init?: RequestInit, timeoutMs = 450
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(xplaneApiUrl(path), {
-      ...init,
-      signal: controller.signal,
-    });
+    for (const url of xplaneApiUrls(path)) {
+      try {
+        const response = await fetch(url, {
+          ...init,
+          signal: controller.signal,
+        });
 
-    return (await response.json()) as ApiResult;
+        return (await response.json()) as ApiResult;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          throw error;
+        }
+      }
+    }
+
+    return {
+      ok: false,
+      message: xplaneBridgeErrorMessage(),
+    };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       return {
