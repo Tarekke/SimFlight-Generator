@@ -23,7 +23,7 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: false,
-        message: `X-Plane antwortet nicht auf ${target.host}:${target.port}. Starte X-Plane und prüfe, ob UDP/Netzwerkdaten aktiv sind.`,
+        message: `X-Plane gibt keine Rückantwort auf ${target.host}:${target.port}. Starte X-Plane und prüfe UDP/Netzwerkdaten. Wetter senden kann trotzdem funktionieren, wenn X-Plane Daten annimmt, aber keine Rückantwort sendet.`,
         details: {
           host: target.host,
           port: target.port,

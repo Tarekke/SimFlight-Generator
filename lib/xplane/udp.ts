@@ -12,7 +12,7 @@ type XPlaneReadResult = {
 
 const DEFAULT_XPLANE_HOST = "127.0.0.1";
 const DEFAULT_XPLANE_PORT = 49000;
-const STATUS_DATAREF = "sim/time/total_running_time_sec";
+const STATUS_DATAREFS = ["sim/time/local_time_sec", "sim/time/total_running_time_sec"];
 
 export function getXPlaneTarget() {
   return {
@@ -40,23 +40,31 @@ export async function sendDatarefs(values: DatarefValue[]) {
   };
 }
 
-export async function checkXPlaneConnection(timeoutMs = 1500) {
+export async function checkXPlaneConnection(timeoutMs = 3000) {
   const target = getXPlaneTarget();
-  const socket = dgram.createSocket("udp4");
-  const requestIndex = 8701;
+  let lastError: unknown = null;
 
-  try {
-    const result = await readDataref(socket, STATUS_DATAREF, requestIndex, target.port, target.host, timeoutMs);
-    await sendPacket(socket, createRrefPacket(STATUS_DATAREF, requestIndex, 0), target.port, target.host);
+  for (const [offset, dataref] of STATUS_DATAREFS.entries()) {
+    const socket = dgram.createSocket("udp4");
+    const requestIndex = 8701 + offset;
 
-    return {
-      target,
-      dataref: STATUS_DATAREF,
-      value: result.value,
-    };
-  } finally {
-    socket.close();
+    try {
+      const result = await readDataref(socket, dataref, requestIndex, target.port, target.host, timeoutMs);
+      await sendPacket(socket, createRrefPacket(dataref, requestIndex, 0), target.port, target.host);
+
+      return {
+        target,
+        dataref,
+        value: result.value,
+      };
+    } catch (error) {
+      lastError = error;
+    } finally {
+      socket.close();
+    }
   }
+
+  throw lastError ?? new Error("X-Plane hat nicht geantwortet.");
 }
 
 function readDataref(
@@ -86,7 +94,7 @@ function readDataref(
     }
 
     socket.on("message", onMessage);
-    socket.bind(() => {
+    socket.bind(0, "0.0.0.0", () => {
       socket.send(createRrefPacket(path, index, 5), port, host, (error) => {
         if (error) {
           clearTimeout(timeout);
@@ -131,7 +139,7 @@ function createRrefPacket(path: string, index: number, frequency: number) {
 function parseRrefResponse(message: Buffer, wantedIndex: number) {
   const header = message.subarray(0, 5).toString("ascii");
 
-  if (header !== "RREF,") {
+  if (header !== "RREF," && header !== "RREF\0") {
     return null;
   }
 
