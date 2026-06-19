@@ -102,6 +102,7 @@ type GeneratedScenario = {
   story: string;
   from: Airport;
   to: Airport;
+  stopover?: Airport;
   distanceNm: number;
   aircraftCategory: AircraftCategory;
   startMode: "ground" | "air";
@@ -816,7 +817,7 @@ export default function Home() {
               label="Flugdauer"
               unit=""
               min="20"
-              max="900"
+              max="600"
               step="10"
               value={scenarioForm.durationMinutes}
               displayValue={formatMinutes(scenarioDuration)}
@@ -1386,6 +1387,8 @@ function ScenarioResult({
   scenario: GeneratedScenario;
 }) {
   const loadout = createDisplayLoadout({
+    from: scenario.from,
+    to: scenario.to,
     distanceNm: scenario.distanceNm,
     estimatedMinutes: scenario.durationMinutes,
     difficulty: scenario.difficulty,
@@ -1403,6 +1406,7 @@ function ScenarioResult({
 
       <div className="routeAirports">
         <AirportCard label="Start" airport={scenario.from} />
+        {scenario.stopover ? <AirportCard label="Zwischenlandung" airport={scenario.stopover} /> : null}
         <AirportCard label="Ziel" airport={scenario.to} />
       </div>
 
@@ -1578,7 +1582,7 @@ function regionColor(value: number) {
 }
 
 function durationColor(value: number) {
-  return colorScale(value, 20, 900, ["#16a34a", "#0ea5e9", "#6366f1", "#a855f7", "#ef4444"]);
+  return colorScale(value, 20, 600, ["#16a34a", "#0ea5e9", "#6366f1", "#a855f7", "#ef4444"]);
 }
 
 function createChallenge(form: ChallengeForm, route: GeneratedRoute | null): GeneratedChallenge {
@@ -1802,12 +1806,14 @@ function createScenario(form: ScenarioForm): GeneratedScenario {
   const template = pickRandom(templatePool);
   const route = pickScenarioRoute(requestedMinutes, form.difficulty, template.aircraftCategory);
   const startMode = pickScenarioStartMode(template, form.difficulty);
+  const stopover = pickScenarioStopover(route, form.difficulty);
   const conditions = [
     pickByDifficulty(scenarioWeather, form.difficulty),
     pickByDifficulty(scenarioPressure, form.difficulty),
     scenarioTimeText(requestedMinutes, form.difficulty),
     startMode === "air" ? "Start bereits in der Luft" : "Start am Flughafen",
-  ];
+    stopover ? `Zwischenlandung in ${stopover.icao}. Pausenzeit legt der Pilot selbst fest.` : "",
+  ].filter(Boolean);
 
   return {
     title: template.title,
@@ -1817,6 +1823,7 @@ function createScenario(form: ScenarioForm): GeneratedScenario {
     story: template.story(route.from, route.to),
     from: route.from,
     to: route.to,
+    stopover,
     distanceNm: route.distanceNm,
     aircraftCategory: template.aircraftCategory,
     startMode,
@@ -1827,7 +1834,8 @@ function createScenario(form: ScenarioForm): GeneratedScenario {
       template.rule,
       pickByDifficulty(scenarioRules, form.difficulty),
       `Plane den Flug für ungefähr ${formatMinutes(route.estimatedMinutes)}.`,
-    ],
+      stopover ? "Bei der Zwischenlandung darfst du selbst entscheiden, wie lange du pausierst." : "",
+    ].filter(Boolean),
   };
 }
 
@@ -1838,6 +1846,34 @@ function pickScenarioStartMode(
   const difficultyBonus = difficulty === "Extrem" ? 0.12 : difficulty === "Schwer" ? 0.08 : 0;
   const chance = Math.min((template.airStartChance ?? 0) + difficultyBonus, 0.85);
   return Math.random() < chance ? "air" : "ground";
+}
+
+function pickScenarioStopover(route: GeneratedRoute, difficulty: AirportDifficulty) {
+  if (route.estimatedMinutes < 300) {
+    return undefined;
+  }
+
+  const chance = difficulty === "Einfach" ? 0.25 : difficulty === "Mittel" ? 0.35 : difficulty === "Schwer" ? 0.45 : 0.55;
+
+  if (Math.random() > chance) {
+    return undefined;
+  }
+
+  const midpointLat = (route.from.lat + route.to.lat) / 2;
+  const midpointLon = (route.from.lon + route.to.lon) / 2;
+  const candidates = airports
+    .filter((airport) => airport.icao !== route.from.icao && airport.icao !== route.to.icao)
+    .map((airport) => ({
+      airport,
+      distance:
+        Math.abs(airport.lat - midpointLat) +
+        Math.abs(airport.lon - midpointLon) +
+        airportDifficultyRank[airport.difficulty] * 0.08,
+    }))
+    .sort((first, second) => first.distance - second.distance)
+    .slice(0, 12);
+
+  return candidates.length > 0 ? pickRandom(candidates).airport : undefined;
 }
 
 const scenarioTemplates: {
@@ -2318,15 +2354,16 @@ function formatMinutes(minutes: number) {
 
 function createDisplayLoadout(route: Pick<
   GeneratedRoute,
-  "aircraftCategory" | "aircraftLabel" | "difficulty" | "distanceNm" | "estimatedMinutes"
+  "aircraftCategory" | "aircraftLabel" | "difficulty" | "distanceNm" | "estimatedMinutes" | "from" | "to"
 >) {
   const reserveMinutes = route.difficulty === "Einfach" ? 55 : route.difficulty === "Mittel" ? 45 : 35;
-  const plannedMinutes = Math.max(route.estimatedMinutes + reserveMinutes, 30);
+  const plannedMinutes = Math.min(Math.max(route.estimatedMinutes + reserveMinutes, 30), 660);
+  const loadFactor = displayLoadFactor(route);
 
   if (route.aircraftCategory === "Jet") {
-    const fuelKg = clamp(1800 + plannedMinutes * 46 + route.distanceNm * 3.2, 2200, 18500);
-    const passengers = clamp(Math.round(route.distanceNm / 18) + 58, 55, 178);
-    const cargoKg = clamp(Math.round(route.distanceNm * 4), 350, 3400);
+    const fuelKg = clamp(1800 + plannedMinutes * 62 + route.distanceNm * 2.6, 2200, 42000);
+    const passengers = clamp(Math.round(180 * loadFactor), 42, 186);
+    const cargoKg = clamp(Math.round((450 + route.distanceNm * 2.6) * (0.75 + loadFactor * 0.45)), 300, 5600);
     return {
       aircraft: route.aircraftLabel ?? "Jet",
       fuelKg: Math.round(fuelKg),
@@ -2336,9 +2373,9 @@ function createDisplayLoadout(route: Pick<
   }
 
   if (route.aircraftCategory === "Turboprop") {
-    const fuelKg = clamp(420 + plannedMinutes * 11 + route.distanceNm * 1.1, 520, 3900);
-    const passengers = clamp(Math.round(route.distanceNm / 35) + 8, 6, 70);
-    const cargoKg = clamp(Math.round(route.distanceNm * 2.2), 120, 1400);
+    const fuelKg = clamp(420 + plannedMinutes * 16 + route.distanceNm * 0.9, 520, 7600);
+    const passengers = clamp(Math.round(72 * loadFactor), 7, 76);
+    const cargoKg = clamp(Math.round((140 + route.distanceNm * 1.5) * (0.7 + loadFactor * 0.5)), 90, 2400);
     return {
       aircraft: route.aircraftLabel ?? "Turboprop",
       fuelKg: Math.round(fuelKg),
@@ -2347,15 +2384,34 @@ function createDisplayLoadout(route: Pick<
     };
   }
 
-  const fuelKg = clamp(80 + plannedMinutes * 2.6 + route.distanceNm * 0.45, 95, 820);
-  const passengers = clamp(Math.round(route.distanceNm / 80) + 2, 1, 9);
-  const cargoKg = clamp(Math.round(route.distanceNm * 0.8), 25, 420);
+  const fuelKg = clamp(80 + plannedMinutes * 3.4 + route.distanceNm * 0.35, 95, 1450);
+  const passengers = clamp(Math.round(9 * loadFactor), 1, 9);
+  const cargoKg = clamp(Math.round((35 + route.distanceNm * 0.5) * (0.65 + loadFactor * 0.45)), 20, 620);
   return {
     aircraft: route.aircraftLabel ?? "Propellerflugzeug",
     fuelKg: Math.round(fuelKg),
     passengers,
     cargoKg,
   };
+}
+
+function displayLoadFactor(route: Pick<GeneratedRoute, "aircraftCategory" | "estimatedMinutes" | "from" | "to">) {
+  const seed = `${route.from.icao}-${route.to.icao}-${Math.round(route.estimatedMinutes)}-${route.aircraftCategory}`;
+  const hash = hashString(seed);
+  const timeFactor = clamp(route.estimatedMinutes / 600, 0, 1);
+  const base = 0.42 + timeFactor * 0.26;
+  const variation = (hash / 1000) * 0.34;
+  return clamp(base + variation, 0.32, 0.98);
+}
+
+function hashString(value: string) {
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) % 1000;
+  }
+
+  return hash;
 }
 
 function defaultAircraftLabel(category: AircraftCategory) {

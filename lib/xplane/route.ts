@@ -107,12 +107,13 @@ function createStartProfile(route: XPlaneRoutePayload, headingDeg: number) {
 
 function createAircraftLoadout(route: XPlaneRoutePayload) {
   const reserveMinutes = route.difficulty === "Einfach" ? 55 : route.difficulty === "Mittel" ? 45 : 35;
-  const plannedMinutes = Math.max(route.estimatedMinutes + reserveMinutes, 30);
+  const plannedMinutes = Math.min(Math.max(route.estimatedMinutes + reserveMinutes, 30), 660);
+  const loadFactor = routeLoadFactor(route);
 
   if (route.aircraftCategory === "Jet") {
-    const fuelKg = clamp(1800 + plannedMinutes * 46 + route.distanceNm * 3.2, 2200, 18500);
-    const passengers = clamp(Math.round(route.distanceNm / 18) + 58, 55, 178);
-    const cargoKg = clamp(Math.round(route.distanceNm * 4), 350, 3400);
+    const fuelKg = clamp(1800 + plannedMinutes * 62 + route.distanceNm * 2.6, 2200, 42000);
+    const passengers = clamp(Math.round(180 * loadFactor), 42, 186);
+    const cargoKg = clamp(Math.round((450 + route.distanceNm * 2.6) * (0.75 + loadFactor * 0.45)), 300, 5600);
 
     return {
       aircraft: route.aircraftLabel ?? "Jet",
@@ -125,9 +126,9 @@ function createAircraftLoadout(route: XPlaneRoutePayload) {
   }
 
   if (route.aircraftCategory === "Turboprop") {
-    const fuelKg = clamp(420 + plannedMinutes * 11 + route.distanceNm * 1.1, 520, 3900);
-    const passengers = clamp(Math.round(route.distanceNm / 35) + 8, 6, 70);
-    const cargoKg = clamp(Math.round(route.distanceNm * 2.2), 120, 1400);
+    const fuelKg = clamp(420 + plannedMinutes * 16 + route.distanceNm * 0.9, 520, 7600);
+    const passengers = clamp(Math.round(72 * loadFactor), 7, 76);
+    const cargoKg = clamp(Math.round((140 + route.distanceNm * 1.5) * (0.7 + loadFactor * 0.5)), 90, 2400);
 
     return {
       aircraft: route.aircraftLabel ?? "Turboprop",
@@ -139,9 +140,9 @@ function createAircraftLoadout(route: XPlaneRoutePayload) {
     };
   }
 
-  const fuelKg = clamp(80 + plannedMinutes * 2.6 + route.distanceNm * 0.45, 95, 820);
-  const passengers = clamp(Math.round(route.distanceNm / 80) + 2, 1, 9);
-  const cargoKg = clamp(Math.round(route.distanceNm * 0.8), 25, 420);
+  const fuelKg = clamp(80 + plannedMinutes * 3.4 + route.distanceNm * 0.35, 95, 1450);
+  const passengers = clamp(Math.round(9 * loadFactor), 1, 9);
+  const cargoKg = clamp(Math.round((35 + route.distanceNm * 0.5) * (0.65 + loadFactor * 0.45)), 20, 620);
 
   return {
     aircraft: route.aircraftLabel ?? "Propellerflugzeug",
@@ -151,6 +152,25 @@ function createAircraftLoadout(route: XPlaneRoutePayload) {
     cargoKg,
     payloadKg: Math.round(passengers * 86 + cargoKg),
   };
+}
+
+function routeLoadFactor(route: XPlaneRoutePayload) {
+  const seed = `${route.from.icao}-${route.to.icao}-${Math.round(route.estimatedMinutes)}-${route.aircraftCategory}`;
+  const hash = hashString(seed);
+  const timeFactor = clamp(route.estimatedMinutes / 600, 0, 1);
+  const base = 0.42 + timeFactor * 0.26;
+  const variation = (hash / 1000) * 0.34;
+  return clamp(base + variation, 0.32, 0.98);
+}
+
+function hashString(value: string) {
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) % 1000;
+  }
+
+  return hash;
 }
 
 function pointFromAirport(airport: Airport, headingDeg: number, distanceNm: number) {
