@@ -2361,7 +2361,11 @@ function createDisplayLoadout(route: Pick<
   const loadFactor = displayLoadFactor(route);
 
   if (route.aircraftCategory === "Jet") {
-    const fuelKg = clamp(1800 + plannedMinutes * 62 + route.distanceNm * 2.6, 2200, 42000);
+    const fuelKg = clamp(
+      2200 + route.estimatedMinutes * 78 + reserveMinutes * 18 + route.distanceNm * 0.8 + loadFactor * 1200,
+      2200,
+      56000,
+    );
     const passengers = clamp(Math.round(180 * loadFactor), 42, 186);
     const cargoKg = clamp(Math.round((450 + route.distanceNm * 2.6) * (0.75 + loadFactor * 0.45)), 300, 5600);
     return {
