@@ -2099,7 +2099,7 @@ function createRoute(form: RouteForm): GeneratedRoute {
         requestedMinutes,
         difficulty: form.difficulty,
         aircraftCategory: form.aircraftCategory,
-        aircraftLabel: defaultAircraftLabel(form.aircraftCategory),
+        aircraftLabel: defaultAircraftLabel(form.aircraftCategory, estimatedMinutes),
         startMode: "ground",
       });
     }
@@ -2418,8 +2418,16 @@ function hashString(value: string) {
   return hash;
 }
 
-function defaultAircraftLabel(category: AircraftCategory) {
+function defaultAircraftLabel(category: AircraftCategory, estimatedMinutes = 0) {
   if (category === "Jet") {
+    if (estimatedMinutes >= 480) {
+      return "Airbus A350, Boeing 777 oder Boeing 787";
+    }
+
+    if (estimatedMinutes >= 300) {
+      return "Airbus A330, Boeing 787 oder Boeing 767";
+    }
+
     return "Airbus A320 oder Boeing 737";
   }
 
