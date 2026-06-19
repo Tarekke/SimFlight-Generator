@@ -238,6 +238,14 @@ export default function Home() {
   }
 
   useEffect(() => {
+    const view = new URLSearchParams(window.location.search).get("view");
+
+    if (isActiveView(view)) {
+      setActiveView(view);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!isLive) {
       setLiveState("Live ist aus.");
       return;
@@ -257,7 +265,7 @@ export default function Home() {
     setIsChecking(true);
     setStatus(null);
 
-    const data = await fetchXPlaneJson("/api/xplane/status");
+    const data = await fetchXPlaneJson("/api/xplane/status", undefined, 45000, activeView);
 
     setStatus(data);
     setIsChecking(false);
@@ -275,22 +283,32 @@ export default function Home() {
   }
 
   async function postWeather() {
-    return fetchXPlaneJson("/api/xplane/weather", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    return fetchXPlaneJson(
+      "/api/xplane/weather",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(toPayload(form)),
       },
-      body: JSON.stringify(toPayload(form)),
-    });
+      45000,
+      "weather",
+    );
   }
 
   async function sendExtremeWeather() {
     setIsSendingTest(true);
     setSendResult(null);
 
-    const data = await fetchXPlaneJson("/api/xplane/weather/test", {
-      method: "POST",
-    });
+    const data = await fetchXPlaneJson(
+      "/api/xplane/weather/test",
+      {
+        method: "POST",
+      },
+      45000,
+      "weather",
+    );
 
     setSendResult(data);
     setIsSendingTest(false);
@@ -317,13 +335,18 @@ export default function Home() {
     setIsApplyingRoute(true);
     setRouteApplyResult(null);
 
-    const data = await fetchXPlaneJson("/api/xplane/route", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const data = await fetchXPlaneJson(
+      "/api/xplane/route",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(generatedRoute),
       },
-      body: JSON.stringify(generatedRoute),
-    });
+      45000,
+      "route",
+    );
 
     setRouteApplyResult(data);
     setIsApplyingRoute(false);
@@ -337,13 +360,18 @@ export default function Home() {
     setIsApplyingRoute(true);
     setChallengeApplyResult(null);
 
-    const data = await fetchXPlaneJson("/api/xplane/route", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const data = await fetchXPlaneJson(
+      "/api/xplane/route",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(generatedRoute),
       },
-      body: JSON.stringify(generatedRoute),
-    });
+      45000,
+      "challenge",
+    );
 
     setChallengeApplyResult({
       ...data,
@@ -2138,7 +2166,12 @@ function xplaneApiUrls(path: string) {
   return [`http://localhost:3000${path}`, `http://127.0.0.1:3000${path}`];
 }
 
-async function fetchXPlaneJson(path: string, init?: RequestInit, timeoutMs = 45000): Promise<ApiResult> {
+async function fetchXPlaneJson(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = 45000,
+  bridgeView: ActiveView = "weather",
+): Promise<ApiResult> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
@@ -2160,26 +2193,30 @@ async function fetchXPlaneJson(path: string, init?: RequestInit, timeoutMs = 450
 
     return {
       ok: false,
-      message: xplaneBridgeErrorMessage(),
+      message: xplaneBridgeErrorMessage(bridgeView),
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
+      openLocalBridge(bridgeView);
+
       return {
         ok: false,
-        message: "Verbindung wurde nach 45 Sekunden abgebrochen. X-Plane wurde nicht erreicht.",
+        message: "Verbindung wurde nach 45 Sekunden abgebrochen. Die lokale Bridge wird jetzt geöffnet.",
       };
     }
 
+    openLocalBridge(bridgeView);
+
     return {
       ok: false,
-      message: xplaneBridgeErrorMessage(),
+      message: xplaneBridgeErrorMessage(bridgeView),
     };
   } finally {
     window.clearTimeout(timeout);
   }
 }
 
-function xplaneBridgeErrorMessage() {
+function xplaneBridgeErrorMessage(bridgeView: ActiveView = "weather") {
   if (typeof window === "undefined") {
     return "X-Plane konnte nicht erreicht werden.";
   }
@@ -2190,7 +2227,29 @@ function xplaneBridgeErrorMessage() {
     return "Die lokale X-Plane-Verbindung konnte nicht erreicht werden. Prüfe, ob X-Plane läuft.";
   }
 
-  return "Die Vercel-Seite konnte die lokale Bridge nicht erreichen. Starte lokal zuerst npm run dev und öffne dann Vercel nochmal.";
+  openLocalBridge(bridgeView);
+
+  return "Der Browser blockiert den direkten Zugriff. Die lokale Bridge wird jetzt geöffnet.";
+}
+
+function openLocalBridge(view: ActiveView) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const isLocalApp = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+  if (isLocalApp) {
+    return;
+  }
+
+  window.setTimeout(() => {
+    window.location.href = `http://localhost:3000/?view=${view}`;
+  }, 800);
+}
+
+function isActiveView(value: string | null): value is ActiveView {
+  return value === "menu" || value === "weather" || value === "route" || value === "challenge" || value === "scenario";
 }
 
 function colorScale(value: number, min: number, max: number, stops: string[]) {
