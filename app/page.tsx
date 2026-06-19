@@ -150,7 +150,13 @@ const initialScenarioForm: ScenarioForm = {
   difficulty: "Mittel",
 };
 
-const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherForm }[] = [
+type WeatherPreset = {
+  name: string;
+  tone: "clear" | "windy" | "bad" | "storm" | "snow" | "fog" | "heat" | "hurricane";
+  values: WeatherForm;
+};
+
+const presets: WeatherPreset[] = [
   {
     name: "Klar",
     tone: "clear",
@@ -207,7 +213,7 @@ const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherF
   },
   {
     name: "Gewitter",
-    tone: "bad",
+    tone: "storm",
     values: {
       location: "Gewitter",
       temperatureC: "22",
@@ -225,7 +231,7 @@ const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherF
   },
   {
     name: "Wintersturm",
-    tone: "bad",
+    tone: "snow",
     values: {
       location: "Wintersturm",
       temperatureC: "-8",
@@ -243,7 +249,7 @@ const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherF
   },
   {
     name: "Nebel",
-    tone: "windy",
+    tone: "fog",
     values: {
       location: "Nebel",
       temperatureC: "6",
@@ -261,7 +267,7 @@ const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherF
   },
   {
     name: "Hitzewelle",
-    tone: "windy",
+    tone: "heat",
     values: {
       location: "Hitzewelle",
       temperatureC: "41",
@@ -279,7 +285,7 @@ const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherF
   },
   {
     name: "Hurrikan/Sturm",
-    tone: "bad",
+    tone: "hurricane",
     values: {
       location: "Hurrikan/Sturm",
       temperatureC: "27",
@@ -992,6 +998,9 @@ export default function Home() {
                 {preset.name}
               </button>
             ))}
+            <button className="presetButton chaos" type="button" onClick={() => setForm(createRandomWeather(form))}>
+              Zufälliges Wetter
+            </button>
           </div>
 
           <label className="locationField">
@@ -1610,6 +1619,32 @@ function toPayload(form: WeatherForm) {
     timeZoneOffsetMinutes: Number(form.timeZoneOffsetMinutes),
     weatherRadiusKm: Number(form.weatherRadiusKm),
   };
+}
+
+function createRandomWeather(current: WeatherForm): WeatherForm {
+  const temperatureC = randomInt(-25, 44);
+  const windSpeedKt = randomInt(0, 95);
+  const rainPercent = randomInt(0, 100);
+  const cloudCoverage = randomInt(Math.min(rainPercent, 70), 100);
+  const visibilityM = randomInt(200, rainPercent > 70 || cloudCoverage > 85 ? 8000 : 30000);
+
+  return {
+    ...current,
+    location: current.location,
+    temperatureC: String(temperatureC),
+    windDirectionDeg: String(randomInt(0, 360)),
+    windSpeedKt: String(windSpeedKt),
+    qnh: String(randomInt(955, 1045)),
+    visibilityM: String(Math.max(200, visibilityM)),
+    cloudCoverage: String(cloudCoverage),
+    rainPercent: String(rainPercent),
+    turbulence: String(randomInt(windSpeedKt > 45 ? 4 : 0, 10)),
+    weatherRadiusKm: String(randomInt(5, 50)),
+  };
+}
+
+function randomInt(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function temperatureColor(value: number) {
