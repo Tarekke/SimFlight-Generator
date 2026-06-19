@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { WeatherPayload } from "@/lib/weather/types";
+import { checkXPlaneConnection } from "@/lib/xplane/udp";
 import { sendWeatherToXPlane } from "@/lib/xplane/weather";
 
 export const runtime = "nodejs";
@@ -15,6 +16,19 @@ export async function POST(request: NextRequest) {
         message: error,
       },
       { status: 400 },
+    );
+  }
+
+  try {
+    await checkXPlaneConnection();
+  } catch {
+    return NextResponse.json(
+      {
+        ok: false,
+        message:
+          "X-Plane antwortet nicht. Wetter wurde nicht gesendet. Starte X-Plane und drücke danach zuerst auf X-Plane prüfen.",
+      },
+      { status: 503 },
     );
   }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { XPlaneRoutePayload } from "@/lib/xplane/route";
 import { sendRouteToXPlane } from "@/lib/xplane/route";
+import { checkXPlaneConnection } from "@/lib/xplane/udp";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    await checkXPlaneConnection();
     const result = await sendRouteToXPlane(payload);
 
     return NextResponse.json({
