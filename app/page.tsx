@@ -223,6 +223,7 @@ export default function Home() {
   const [isLocationOpen, setIsLocationOpen] = useState(false);
   const [openAirportPicker, setOpenAirportPicker] = useState<"start" | "end" | null>(null);
   const [liveState, setLiveState] = useState("Live ist aus.");
+  const [bridgeUrl, setBridgeUrl] = useState("");
 
   const cityOptions = majorCities;
   const locationSearch = normalizeSearch(form.location.trim());
@@ -238,10 +239,17 @@ export default function Home() {
   }
 
   useEffect(() => {
-    const view = new URLSearchParams(window.location.search).get("view");
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get("view");
+    const bridge = params.get("bridge") || window.localStorage.getItem("simflightBridgeUrl");
 
     if (isActiveView(view)) {
       setActiveView(view);
+    }
+
+    if (bridge) {
+      setBridgeUrl(bridge);
+      window.localStorage.setItem("simflightBridgeUrl", bridge);
     }
   }, []);
 
@@ -265,7 +273,7 @@ export default function Home() {
     setIsChecking(true);
     setStatus(null);
 
-    const data = await fetchXPlaneJson("/api/xplane/status", undefined, 45000, activeView);
+    const data = await fetchXPlaneJson("/api/xplane/status", undefined, 45000, activeView, bridgeUrl);
 
     setStatus(data);
     setIsChecking(false);
@@ -294,6 +302,7 @@ export default function Home() {
       },
       45000,
       "weather",
+      bridgeUrl,
     );
   }
 
@@ -308,6 +317,7 @@ export default function Home() {
       },
       45000,
       "weather",
+      bridgeUrl,
     );
 
     setSendResult(data);
@@ -346,6 +356,7 @@ export default function Home() {
       },
       45000,
       "route",
+      bridgeUrl,
     );
 
     setRouteApplyResult(data);
@@ -371,6 +382,7 @@ export default function Home() {
       },
       45000,
       "challenge",
+      bridgeUrl,
     );
 
     setChallengeApplyResult({
@@ -1007,6 +1019,21 @@ export default function Home() {
           </label>
 
           <p className="muted">{liveState}</p>
+
+          <label className="bridgeField">
+            Bridge-URL
+            <input
+              placeholder="https://deine-bridge.trycloudflare.com"
+              value={bridgeUrl}
+              onChange={(event) => {
+                setBridgeUrl(event.target.value);
+                window.localStorage.setItem("simflightBridgeUrl", event.target.value);
+              }}
+            />
+            <span>
+              Für Vercel ohne Seitenwechsel. Die URL muss auf deinen lokalen Server zeigen.
+            </span>
+          </label>
 
           <StatusBlock title="Verbindung" result={status} empty="Noch nicht geprüft." />
           <StatusBlock title="Letztes Senden" result={sendResult} empty="Noch nichts gesendet." />
@@ -2152,7 +2179,7 @@ function formatMinutes(minutes: number) {
   return `${hours} h ${rest.toString().padStart(2, "0")} min`;
 }
 
-function xplaneApiUrls(path: string) {
+function xplaneApiUrls(path: string, bridgeUrl = "") {
   if (typeof window === "undefined") {
     return [path];
   }
@@ -2163,7 +2190,14 @@ function xplaneApiUrls(path: string) {
     return [path];
   }
 
-  return [`http://localhost:3000${path}`, `http://127.0.0.1:3000${path}`];
+  const urls = [`http://localhost:3000${path}`, `http://127.0.0.1:3000${path}`];
+  const normalizedBridgeUrl = normalizeBridgeUrl(bridgeUrl);
+
+  if (normalizedBridgeUrl) {
+    return [`${normalizedBridgeUrl}${path}`, ...urls];
+  }
+
+  return urls;
 }
 
 async function fetchXPlaneJson(
@@ -2171,12 +2205,13 @@ async function fetchXPlaneJson(
   init?: RequestInit,
   timeoutMs = 45000,
   bridgeView: ActiveView = "weather",
+  bridgeUrl = "",
 ): Promise<ApiResult> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    for (const url of xplaneApiUrls(path)) {
+    for (const url of xplaneApiUrls(path, bridgeUrl)) {
       try {
         const response = await fetch(url, {
           ...init,
@@ -2193,30 +2228,26 @@ async function fetchXPlaneJson(
 
     return {
       ok: false,
-      message: xplaneBridgeErrorMessage(bridgeView),
+      message: xplaneBridgeErrorMessage(bridgeUrl),
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      openLocalBridge(bridgeView);
-
       return {
         ok: false,
-        message: "Verbindung wurde nach 45 Sekunden abgebrochen. Die lokale Bridge wird jetzt geöffnet.",
+        message: "Verbindung wurde nach 45 Sekunden abgebrochen. X-Plane wurde nicht erreicht.",
       };
     }
 
-    openLocalBridge(bridgeView);
-
     return {
       ok: false,
-      message: xplaneBridgeErrorMessage(bridgeView),
+      message: xplaneBridgeErrorMessage(bridgeUrl),
     };
   } finally {
     window.clearTimeout(timeout);
   }
 }
 
-function xplaneBridgeErrorMessage(bridgeView: ActiveView = "weather") {
+function xplaneBridgeErrorMessage(bridgeUrl = "") {
   if (typeof window === "undefined") {
     return "X-Plane konnte nicht erreicht werden.";
   }
@@ -2227,29 +2258,19 @@ function xplaneBridgeErrorMessage(bridgeView: ActiveView = "weather") {
     return "Die lokale X-Plane-Verbindung konnte nicht erreicht werden. Prüfe, ob X-Plane läuft.";
   }
 
-  openLocalBridge(bridgeView);
-
-  return "Der Browser blockiert den direkten Zugriff. Die lokale Bridge wird jetzt geöffnet.";
-}
-
-function openLocalBridge(view: ActiveView) {
-  if (typeof window === "undefined") {
-    return;
+  if (normalizeBridgeUrl(bridgeUrl)) {
+    return "Die Bridge-URL wurde nicht erreicht. Prüfe, ob der Tunnel läuft und auf http://localhost:3000 zeigt.";
   }
 
-  const isLocalApp = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-
-  if (isLocalApp) {
-    return;
-  }
-
-  window.setTimeout(() => {
-    window.location.href = `http://localhost:3000/?view=${view}`;
-  }, 800);
+  return "Der Browser blockiert den direkten lokalen Zugriff. Trage eine Bridge-URL ein, damit Vercel auf dieser Seite bleiben kann.";
 }
 
 function isActiveView(value: string | null): value is ActiveView {
   return value === "menu" || value === "weather" || value === "route" || value === "challenge" || value === "scenario";
+}
+
+function normalizeBridgeUrl(value: string) {
+  return value.trim().replace(/\/+$/, "");
 }
 
 function colorScale(value: number, min: number, max: number, stops: string[]) {
