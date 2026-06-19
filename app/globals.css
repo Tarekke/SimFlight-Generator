@@ -149,6 +149,7 @@ p {
 
 h1 {
   margin-bottom: 0;
+  color: #000000;
   font-size: clamp(2rem, 5vw, 4rem);
   line-height: 1;
 }

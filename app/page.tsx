@@ -257,8 +257,7 @@ export default function Home() {
     setIsChecking(true);
     setStatus(null);
 
-    const response = await fetch(xplaneApiUrl("/api/xplane/status"));
-    const data = (await response.json()) as ApiResult;
+    const data = await fetchXPlaneJson("/api/xplane/status");
 
     setStatus(data);
     setIsChecking(false);
@@ -276,24 +275,22 @@ export default function Home() {
   }
 
   async function postWeather() {
-    const response = await fetch(xplaneApiUrl("/api/xplane/weather"), {
+    return fetchXPlaneJson("/api/xplane/weather", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(toPayload(form)),
     });
-    return (await response.json()) as ApiResult;
   }
 
   async function sendExtremeWeather() {
     setIsSendingTest(true);
     setSendResult(null);
 
-    const response = await fetch(xplaneApiUrl("/api/xplane/weather/test"), {
+    const data = await fetchXPlaneJson("/api/xplane/weather/test", {
       method: "POST",
     });
-    const data = (await response.json()) as ApiResult;
 
     setSendResult(data);
     setIsSendingTest(false);
@@ -320,14 +317,13 @@ export default function Home() {
     setIsApplyingRoute(true);
     setRouteApplyResult(null);
 
-    const response = await fetch(xplaneApiUrl("/api/xplane/route"), {
+    const data = await fetchXPlaneJson("/api/xplane/route", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(generatedRoute),
     });
-    const data = (await response.json()) as ApiResult;
 
     setRouteApplyResult(data);
     setIsApplyingRoute(false);
@@ -341,14 +337,13 @@ export default function Home() {
     setIsApplyingRoute(true);
     setChallengeApplyResult(null);
 
-    const response = await fetch(xplaneApiUrl("/api/xplane/route"), {
+    const data = await fetchXPlaneJson("/api/xplane/route", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(generatedRoute),
     });
-    const data = (await response.json()) as ApiResult;
 
     setChallengeApplyResult({
       ...data,
@@ -2140,7 +2135,49 @@ function xplaneApiUrl(path: string) {
     return path;
   }
 
-  return `http://localhost:3000${path}`;
+  return `http://127.0.0.1:3000${path}`;
+}
+
+async function fetchXPlaneJson(path: string, init?: RequestInit, timeoutMs = 45000): Promise<ApiResult> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(xplaneApiUrl(path), {
+      ...init,
+      signal: controller.signal,
+    });
+
+    return (await response.json()) as ApiResult;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return {
+        ok: false,
+        message: "Verbindung wurde nach 45 Sekunden abgebrochen. X-Plane wurde nicht erreicht.",
+      };
+    }
+
+    return {
+      ok: false,
+      message: xplaneBridgeErrorMessage(),
+    };
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function xplaneBridgeErrorMessage() {
+  if (typeof window === "undefined") {
+    return "X-Plane konnte nicht erreicht werden.";
+  }
+
+  const isLocalApp = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+  if (isLocalApp) {
+    return "Die lokale X-Plane-Verbindung konnte nicht erreicht werden. Prüfe, ob X-Plane läuft.";
+  }
+
+  return "Die Vercel-Seite konnte die lokale Bridge nicht erreichen. Starte lokal zuerst npm run dev und öffne dann Vercel nochmal.";
 }
 
 function colorScale(value: number, min: number, max: number, stops: string[]) {
