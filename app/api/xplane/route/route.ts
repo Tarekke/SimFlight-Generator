@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
         route: payload,
         target: result.target,
         headingDeg: result.headingDeg,
+        loadout: result.loadout,
+        startProfile: result.startProfile,
         weather: result.weather,
         note: result.note,
         routeDatarefs: result.routeDatarefs,

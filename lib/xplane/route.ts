@@ -10,23 +10,28 @@ export type XPlaneRoutePayload = {
   estimatedMinutes: number;
   distanceNm: number;
   targetMinutes: number;
+  aircraftLabel?: string;
+  missionType?: string;
+  startMode?: "ground" | "air";
 };
 
 export async function sendRouteToXPlane(route: XPlaneRoutePayload) {
   const weather = createRouteWeather(route);
   const headingDeg = bearingBetweenAirports(route.from, route.to);
+  const loadout = createAircraftLoadout(route);
+  const startProfile = createStartProfile(route, headingDeg);
   const routeResult = await sendDatarefs([
     {
       path: "sim/flightmodel/position/latitude",
-      value: route.from.lat,
+      value: startProfile.lat,
     },
     {
       path: "sim/flightmodel/position/longitude",
-      value: route.from.lon,
+      value: startProfile.lon,
     },
     {
       path: "sim/flightmodel/position/elevation",
-      value: 180,
+      value: startProfile.elevationM,
     },
     {
       path: "sim/flightmodel/position/psi",
@@ -42,11 +47,23 @@ export async function sendRouteToXPlane(route: XPlaneRoutePayload) {
     },
     {
       path: "sim/flightmodel/position/groundspeed",
-      value: 0,
+      value: startProfile.groundspeedMps,
     },
     {
       path: "sim/flightmodel/controls/parkbrake",
-      value: 1,
+      value: startProfile.parkBrake,
+    },
+    {
+      path: "sim/flightmodel/weight/m_fuel[0]",
+      value: loadout.fuelPerTankKg,
+    },
+    {
+      path: "sim/flightmodel/weight/m_fuel[1]",
+      value: loadout.fuelPerTankKg,
+    },
+    {
+      path: "sim/flightmodel/weight/m_fixed",
+      value: loadout.payloadKg,
     },
   ]);
 
@@ -57,10 +74,109 @@ export async function sendRouteToXPlane(route: XPlaneRoutePayload) {
     routeDatarefs: routeResult.sent,
     weatherDatarefs: weatherResult.sent,
     weather,
+    loadout,
+    startProfile,
     headingDeg,
     note:
-      "X-Plane UDP kann Position, Wetter und Uhrzeit setzen. Eine echte Parkposition, Startbahn-Auswahl und ein anderes Flugzeug kann die Demo per UDP nicht zuverlässig laden.",
+      "X-Plane UDP setzt Position, Wetter, Uhrzeit, Treibstoff und Beladung. Eine echte Parkposition, Startbahn-Auswahl oder ein anderes Flugzeug kann die Demo per UDP nicht zuverlässig laden.",
   };
+}
+
+function createStartProfile(route: XPlaneRoutePayload, headingDeg: number) {
+  if (route.startMode === "air") {
+    const offsetNm = route.aircraftCategory === "Jet" ? 18 : route.aircraftCategory === "Turboprop" ? 12 : 7;
+    const start = pointFromAirport(route.from, headingDeg, offsetNm);
+
+    return {
+      lat: start.lat,
+      lon: start.lon,
+      elevationM: route.aircraftCategory === "Jet" ? 1800 : route.aircraftCategory === "Turboprop" ? 1200 : 750,
+      groundspeedMps: route.aircraftCategory === "Jet" ? 135 : route.aircraftCategory === "Turboprop" ? 95 : 50,
+      parkBrake: 0,
+    };
+  }
+
+  return {
+    lat: route.from.lat,
+    lon: route.from.lon,
+    elevationM: 180,
+    groundspeedMps: 0,
+    parkBrake: 1,
+  };
+}
+
+function createAircraftLoadout(route: XPlaneRoutePayload) {
+  const reserveMinutes = route.difficulty === "Einfach" ? 55 : route.difficulty === "Mittel" ? 45 : 35;
+  const plannedMinutes = Math.max(route.estimatedMinutes + reserveMinutes, 30);
+
+  if (route.aircraftCategory === "Jet") {
+    const fuelKg = clamp(1800 + plannedMinutes * 46 + route.distanceNm * 3.2, 2200, 18500);
+    const passengers = clamp(Math.round(route.distanceNm / 18) + 58, 55, 178);
+    const cargoKg = clamp(Math.round(route.distanceNm * 4), 350, 3400);
+
+    return {
+      aircraft: route.aircraftLabel ?? "Jet",
+      fuelKg: Math.round(fuelKg),
+      fuelPerTankKg: Math.round(fuelKg / 2),
+      passengers,
+      cargoKg,
+      payloadKg: Math.round(passengers * 92 + cargoKg),
+    };
+  }
+
+  if (route.aircraftCategory === "Turboprop") {
+    const fuelKg = clamp(420 + plannedMinutes * 11 + route.distanceNm * 1.1, 520, 3900);
+    const passengers = clamp(Math.round(route.distanceNm / 35) + 8, 6, 70);
+    const cargoKg = clamp(Math.round(route.distanceNm * 2.2), 120, 1400);
+
+    return {
+      aircraft: route.aircraftLabel ?? "Turboprop",
+      fuelKg: Math.round(fuelKg),
+      fuelPerTankKg: Math.round(fuelKg / 2),
+      passengers,
+      cargoKg,
+      payloadKg: Math.round(passengers * 88 + cargoKg),
+    };
+  }
+
+  const fuelKg = clamp(80 + plannedMinutes * 2.6 + route.distanceNm * 0.45, 95, 820);
+  const passengers = clamp(Math.round(route.distanceNm / 80) + 2, 1, 9);
+  const cargoKg = clamp(Math.round(route.distanceNm * 0.8), 25, 420);
+
+  return {
+    aircraft: route.aircraftLabel ?? "Propellerflugzeug",
+    fuelKg: Math.round(fuelKg),
+    fuelPerTankKg: Math.round(fuelKg / 2),
+    passengers,
+    cargoKg,
+    payloadKg: Math.round(passengers * 86 + cargoKg),
+  };
+}
+
+function pointFromAirport(airport: Airport, headingDeg: number, distanceNm: number) {
+  const distanceRad = distanceNm / 3440.065;
+  const bearing = toRad(headingDeg);
+  const lat1 = toRad(airport.lat);
+  const lon1 = toRad(airport.lon);
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(distanceRad) +
+      Math.cos(lat1) * Math.sin(distanceRad) * Math.cos(bearing),
+  );
+  const lon2 =
+    lon1 +
+    Math.atan2(
+      Math.sin(bearing) * Math.sin(distanceRad) * Math.cos(lat1),
+      Math.cos(distanceRad) - Math.sin(lat1) * Math.sin(lat2),
+    );
+
+  return {
+    lat: toDeg(lat2),
+    lon: ((toDeg(lon2) + 540) % 360) - 180,
+  };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
 }
 
 function createRouteWeather(route: XPlaneRoutePayload) {

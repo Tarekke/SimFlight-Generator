@@ -73,6 +73,9 @@ type GeneratedRoute = {
   wasAdjusted?: boolean;
   difficulty: AirportDifficulty;
   aircraftCategory: AircraftCategory;
+  aircraftLabel?: string;
+  missionType?: string;
+  startMode?: "ground" | "air";
 };
 
 type GeneratedChallenge = {
@@ -100,6 +103,8 @@ type GeneratedScenario = {
   from: Airport;
   to: Airport;
   distanceNm: number;
+  aircraftCategory: AircraftCategory;
+  startMode: "ground" | "air";
   aircraft: string[];
   conditions: string[];
   goals: string[];
@@ -215,6 +220,7 @@ export default function Home() {
   const [sendResult, setSendResult] = useState<ApiResult | null>(null);
   const [routeApplyResult, setRouteApplyResult] = useState<ApiResult | null>(null);
   const [challengeApplyResult, setChallengeApplyResult] = useState<ApiResult | null>(null);
+  const [scenarioApplyResult, setScenarioApplyResult] = useState<ApiResult | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
@@ -335,6 +341,7 @@ export default function Home() {
 
   function generateScenario() {
     setGeneratedScenario(createScenario(scenarioForm));
+    setScenarioApplyResult(null);
   }
 
   async function applyRouteToXPlane() {
@@ -389,6 +396,50 @@ export default function Home() {
       ...data,
       message: data.ok
         ? `Route ${generatedRoute.from.icao} nach ${generatedRoute.to.icao} wurde gesendet. Challenge: ${generatedChallenge.title}.`
+        : data.message,
+    });
+    setIsApplyingRoute(false);
+  }
+
+  async function applyScenarioToXPlane() {
+    if (!generatedScenario) {
+      return;
+    }
+
+    setIsApplyingRoute(true);
+    setScenarioApplyResult(null);
+
+    const scenarioRoute: GeneratedRoute = {
+      from: generatedScenario.from,
+      to: generatedScenario.to,
+      distanceNm: generatedScenario.distanceNm,
+      estimatedMinutes: generatedScenario.durationMinutes,
+      targetMinutes: generatedScenario.durationMinutes,
+      difficulty: generatedScenario.difficulty,
+      aircraftCategory: generatedScenario.aircraftCategory,
+      aircraftLabel: generatedScenario.aircraft[0],
+      missionType: generatedScenario.type,
+      startMode: generatedScenario.startMode,
+    };
+
+    const data = await fetchXPlaneJson(
+      "/api/xplane/route",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(scenarioRoute),
+      },
+      45000,
+      "scenario",
+      bridgeUrl,
+    );
+
+    setScenarioApplyResult({
+      ...data,
+      message: data.ok
+        ? `Szenario "${generatedScenario.title}" wurde an X-Plane gesendet.`
         : data.message,
     });
     setIsApplyingRoute(false);
@@ -801,7 +852,12 @@ export default function Home() {
           <aside className="panel routeResultPanel">
             <h2>Mission</h2>
             {generatedScenario ? (
-              <ScenarioResult scenario={generatedScenario} />
+              <ScenarioResult
+                applyResult={scenarioApplyResult}
+                isApplying={isApplyingRoute}
+                scenario={generatedScenario}
+                onApply={applyScenarioToXPlane}
+              />
             ) : (
               <p className="muted">Noch kein Szenario generiert.</p>
             )}
@@ -1140,6 +1196,8 @@ function RouteResult({
   result: ApiResult | null;
   route: GeneratedRoute;
 }) {
+  const loadout = createDisplayLoadout(route);
+
   return (
     <div className="routeResult">
       <div className="routeAirports">
@@ -1160,11 +1218,19 @@ function RouteResult({
           <span>Schwierigkeit</span>
           <strong>{route.difficulty}</strong>
         </div>
+        <div>
+          <span>Treibstoff</span>
+          <strong>{loadout.fuelKg} kg</strong>
+        </div>
+        <div>
+          <span>Beladung</span>
+          <strong>{loadout.passengers} Pax</strong>
+        </div>
       </div>
 
       <p className="muted">
-        Flugzeug: {route.aircraftCategory}. Die Route wird nach Entfernung, Flugzeit und
-        Schwierigkeit passend ausgewählt.
+        Flugzeug: {route.aircraftLabel ?? route.aircraftCategory}. Dazu etwa {loadout.cargoKg} kg
+        Fracht. Die Route wird nach Entfernung, Flugzeit und Schwierigkeit passend ausgewählt.
       </p>
 
       <button className="secondaryActionButton" type="button" onClick={onOpenChallenge}>
@@ -1181,8 +1247,8 @@ function RouteResult({
           <p>{result.message}</p>
           {result.ok ? (
             <small>
-              X-Plane kann per UDP Wetter, Uhrzeit und Position setzen. Eine echte Parkposition,
-              Startbahn-Auswahl oder ein anderes Flugzeug kann die Demo nicht sicher per UDP laden.
+              X-Plane bekommt Position am Startflughafen, Wetter, Uhrzeit, Treibstoff und
+              Beladung. Das aktuell geladene Flugzeug bleibt dabei erhalten.
             </small>
           ) : null}
         </div>
@@ -1308,7 +1374,25 @@ function ChallengeList({ items, title }: { items: string[]; title: string }) {
   );
 }
 
-function ScenarioResult({ scenario }: { scenario: GeneratedScenario }) {
+function ScenarioResult({
+  applyResult,
+  isApplying,
+  onApply,
+  scenario,
+}: {
+  applyResult: ApiResult | null;
+  isApplying: boolean;
+  onApply: () => void;
+  scenario: GeneratedScenario;
+}) {
+  const loadout = createDisplayLoadout({
+    distanceNm: scenario.distanceNm,
+    estimatedMinutes: scenario.durationMinutes,
+    difficulty: scenario.difficulty,
+    aircraftCategory: scenario.aircraftCategory,
+    aircraftLabel: scenario.aircraft[0],
+  });
+
   return (
     <div className="challengeResult">
       <div className="challengeHero">
@@ -1339,6 +1423,18 @@ function ScenarioResult({ scenario }: { scenario: GeneratedScenario }) {
           <span>Flugzeug</span>
           <strong>{scenario.aircraft[0]}</strong>
         </div>
+        <div>
+          <span>Start</span>
+          <strong>{scenario.startMode === "air" ? "In der Luft" : "Am Flughafen"}</strong>
+        </div>
+        <div>
+          <span>Treibstoff</span>
+          <strong>{loadout.fuelKg} kg</strong>
+        </div>
+        <div>
+          <span>Beladung</span>
+          <strong>{loadout.passengers} Pax</strong>
+        </div>
       </div>
 
       <div className="challengeInfoGrid">
@@ -1347,6 +1443,23 @@ function ScenarioResult({ scenario }: { scenario: GeneratedScenario }) {
         <ChallengeList title="Besondere Regeln" items={scenario.specialRules} />
         <ChallengeList title="Empfohlene Flugzeuge" items={scenario.aircraft} />
       </div>
+
+      <button className="primaryButton" disabled={isApplying} type="button" onClick={onApply}>
+        {isApplying ? "Wird an X-Plane gesendet..." : "Szenario in X-Plane übernehmen"}
+      </button>
+
+      {applyResult ? (
+        <div className={applyResult.ok ? "routeApplyMessage successBox" : "routeApplyMessage warningBox"}>
+          <strong>{applyResult.ok ? "Gesendet" : "Fehler"}</strong>
+          <p>{applyResult.message}</p>
+          {applyResult.ok ? (
+            <small>
+              X-Plane bekommt Startposition, Wetter, Uhrzeit, Treibstoff und Beladung. Das aktuell
+              geladene Flugzeug bleibt dabei erhalten.
+            </small>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1688,10 +1801,12 @@ function createScenario(form: ScenarioForm): GeneratedScenario {
   );
   const template = pickRandom(templatePool);
   const route = pickScenarioRoute(requestedMinutes, form.difficulty, template.aircraftCategory);
+  const startMode = pickScenarioStartMode(template, form.difficulty);
   const conditions = [
     pickByDifficulty(scenarioWeather, form.difficulty),
     pickByDifficulty(scenarioPressure, form.difficulty),
     scenarioTimeText(requestedMinutes, form.difficulty),
+    startMode === "air" ? "Start bereits in der Luft" : "Start am Flughafen",
   ];
 
   return {
@@ -1703,6 +1818,8 @@ function createScenario(form: ScenarioForm): GeneratedScenario {
     from: route.from,
     to: route.to,
     distanceNm: route.distanceNm,
+    aircraftCategory: template.aircraftCategory,
+    startMode,
     aircraft: template.aircraft,
     conditions,
     goals: template.goals(route.from, route.to),
@@ -1714,11 +1831,21 @@ function createScenario(form: ScenarioForm): GeneratedScenario {
   };
 }
 
+function pickScenarioStartMode(
+  template: { airStartChance?: number },
+  difficulty: AirportDifficulty,
+): "ground" | "air" {
+  const difficultyBonus = difficulty === "Extrem" ? 0.12 : difficulty === "Schwer" ? 0.08 : 0;
+  const chance = Math.min((template.airStartChance ?? 0) + difficultyBonus, 0.85);
+  return Math.random() < chance ? "air" : "ground";
+}
+
 const scenarioTemplates: {
   title: string;
   type: string;
   minDifficulty: AirportDifficulty;
   aircraftCategory: AircraftCategory;
+  airStartChance?: number;
   aircraft: string[];
   rule: string;
   story: (from: Airport, to: Airport) => string;
@@ -1729,6 +1856,7 @@ const scenarioTemplates: {
     type: "Passagierflug",
     minDifficulty: "Einfach",
     aircraftCategory: "Jet",
+    airStartChance: 0,
     aircraft: ["Airbus A320", "Boeing 737", "Embraer E-Jet"],
     rule: "Halte den Flug ruhig und komfortabel.",
     story: (from, to) =>
@@ -1744,6 +1872,7 @@ const scenarioTemplates: {
     type: "Frachttransport",
     minDifficulty: "Mittel",
     aircraftCategory: "Turboprop",
+    airStartChance: 0,
     aircraft: ["Beechcraft King Air", "DHC-6 Twin Otter", "ATR 72 Cargo"],
     rule: "Die Fracht darf nicht durch harte Manöver beschädigt werden.",
     story: (from, to) =>
@@ -1759,6 +1888,7 @@ const scenarioTemplates: {
     type: "Inselauftrag",
     minDifficulty: "Mittel",
     aircraftCategory: "Turboprop",
+    airStartChance: 0.18,
     aircraft: ["DHC-6 Twin Otter", "Cessna Caravan", "King Air"],
     rule: "Bleibe unter der Wolkendecke, wenn es sicher möglich ist.",
     story: (from, to) =>
@@ -1774,6 +1904,7 @@ const scenarioTemplates: {
     type: "Businessflug",
     minDifficulty: "Einfach",
     aircraftCategory: "Jet",
+    airStartChance: 0,
     aircraft: ["Citation CJ4", "Phenom 300", "Learjet"],
     rule: "Der Flug soll schnell sein, aber nicht hektisch.",
     story: (from, to) =>
@@ -1789,6 +1920,7 @@ const scenarioTemplates: {
     type: "Rettungsflug",
     minDifficulty: "Schwer",
     aircraftCategory: "Propeller",
+    airStartChance: 0.75,
     aircraft: ["Cessna 172", "Cessna 208 Caravan", "Kodiak 100"],
     rule: "Fliege niedrig genug zum Suchen, aber immer mit sicherer Reserve.",
     story: (from, to) =>
@@ -1804,6 +1936,7 @@ const scenarioTemplates: {
     type: "Versorgungsflug",
     minDifficulty: "Schwer",
     aircraftCategory: "Turboprop",
+    airStartChance: 0.1,
     aircraft: ["Cessna Caravan", "Pilatus PC-12", "DHC-6 Twin Otter"],
     rule: "Die Landung muss sicher sein. Kein unnötiges Risiko wegen Zeitdruck.",
     story: (from, to) =>
@@ -1819,6 +1952,7 @@ const scenarioTemplates: {
     type: "VIP-Transport",
     minDifficulty: "Extrem",
     aircraftCategory: "Jet",
+    airStartChance: 0.25,
     aircraft: ["Businessjet", "Citation X", "Gulfstream"],
     rule: "Sicherheit geht vor. Brich einen unstabilen Anflug sofort ab.",
     story: (from, to) =>
@@ -1834,6 +1968,7 @@ const scenarioTemplates: {
     type: "Buschflug",
     minDifficulty: "Extrem",
     aircraftCategory: "Propeller",
+    airStartChance: 0.15,
     aircraft: ["Cessna 208 Caravan", "Kodiak 100", "DHC-2 Beaver"],
     rule: "Nutze kurze Start- und Landetechnik.",
     story: (from, to) =>
@@ -1928,6 +2063,8 @@ function createRoute(form: RouteForm): GeneratedRoute {
         requestedMinutes,
         difficulty: form.difficulty,
         aircraftCategory: form.aircraftCategory,
+        aircraftLabel: defaultAircraftLabel(form.aircraftCategory),
+        startMode: "ground",
       });
     }
   }
@@ -2177,6 +2314,60 @@ function formatMinutes(minutes: number) {
   }
 
   return `${hours} h ${rest.toString().padStart(2, "0")} min`;
+}
+
+function createDisplayLoadout(route: Pick<
+  GeneratedRoute,
+  "aircraftCategory" | "aircraftLabel" | "difficulty" | "distanceNm" | "estimatedMinutes"
+>) {
+  const reserveMinutes = route.difficulty === "Einfach" ? 55 : route.difficulty === "Mittel" ? 45 : 35;
+  const plannedMinutes = Math.max(route.estimatedMinutes + reserveMinutes, 30);
+
+  if (route.aircraftCategory === "Jet") {
+    const fuelKg = clamp(1800 + plannedMinutes * 46 + route.distanceNm * 3.2, 2200, 18500);
+    const passengers = clamp(Math.round(route.distanceNm / 18) + 58, 55, 178);
+    const cargoKg = clamp(Math.round(route.distanceNm * 4), 350, 3400);
+    return {
+      aircraft: route.aircraftLabel ?? "Jet",
+      fuelKg: Math.round(fuelKg),
+      passengers,
+      cargoKg,
+    };
+  }
+
+  if (route.aircraftCategory === "Turboprop") {
+    const fuelKg = clamp(420 + plannedMinutes * 11 + route.distanceNm * 1.1, 520, 3900);
+    const passengers = clamp(Math.round(route.distanceNm / 35) + 8, 6, 70);
+    const cargoKg = clamp(Math.round(route.distanceNm * 2.2), 120, 1400);
+    return {
+      aircraft: route.aircraftLabel ?? "Turboprop",
+      fuelKg: Math.round(fuelKg),
+      passengers,
+      cargoKg,
+    };
+  }
+
+  const fuelKg = clamp(80 + plannedMinutes * 2.6 + route.distanceNm * 0.45, 95, 820);
+  const passengers = clamp(Math.round(route.distanceNm / 80) + 2, 1, 9);
+  const cargoKg = clamp(Math.round(route.distanceNm * 0.8), 25, 420);
+  return {
+    aircraft: route.aircraftLabel ?? "Propellerflugzeug",
+    fuelKg: Math.round(fuelKg),
+    passengers,
+    cargoKg,
+  };
+}
+
+function defaultAircraftLabel(category: AircraftCategory) {
+  if (category === "Jet") {
+    return "Airbus A320 oder Boeing 737";
+  }
+
+  if (category === "Turboprop") {
+    return "King Air oder ATR 72";
+  }
+
+  return "Cessna 172 oder Cessna Caravan";
 }
 
 function xplaneApiUrls(path: string, bridgeUrl = "") {
