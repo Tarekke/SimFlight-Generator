@@ -257,7 +257,7 @@ export default function Home() {
     setIsChecking(true);
     setStatus(null);
 
-    const response = await fetch("/api/xplane/status");
+    const response = await fetch(xplaneApiUrl("/api/xplane/status"));
     const data = (await response.json()) as ApiResult;
 
     setStatus(data);
@@ -276,7 +276,7 @@ export default function Home() {
   }
 
   async function postWeather() {
-    const response = await fetch("/api/xplane/weather", {
+    const response = await fetch(xplaneApiUrl("/api/xplane/weather"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -290,7 +290,7 @@ export default function Home() {
     setIsSendingTest(true);
     setSendResult(null);
 
-    const response = await fetch("/api/xplane/weather/test", {
+    const response = await fetch(xplaneApiUrl("/api/xplane/weather/test"), {
       method: "POST",
     });
     const data = (await response.json()) as ApiResult;
@@ -320,7 +320,7 @@ export default function Home() {
     setIsApplyingRoute(true);
     setRouteApplyResult(null);
 
-    const response = await fetch("/api/xplane/route", {
+    const response = await fetch(xplaneApiUrl("/api/xplane/route"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -341,7 +341,7 @@ export default function Home() {
     setIsApplyingRoute(true);
     setChallengeApplyResult(null);
 
-    const response = await fetch("/api/xplane/route", {
+    const response = await fetch(xplaneApiUrl("/api/xplane/route"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2127,6 +2127,20 @@ function formatMinutes(minutes: number) {
   }
 
   return `${hours} h ${rest.toString().padStart(2, "0")} min`;
+}
+
+function xplaneApiUrl(path: string) {
+  if (typeof window === "undefined") {
+    return path;
+  }
+
+  const isLocalApp = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+  if (isLocalApp) {
+    return path;
+  }
+
+  return `http://localhost:3000${path}`;
 }
 
 function colorScale(value: number, min: number, max: number, stops: string[]) {

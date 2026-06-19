@@ -1,15 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { corsJson, corsOptions } from "@/lib/http/cors";
 import type { XPlaneRoutePayload } from "@/lib/xplane/route";
 import { sendRouteToXPlane } from "@/lib/xplane/route";
 
 export const runtime = "nodejs";
+
+export function OPTIONS() {
+  return corsOptions();
+}
 
 export async function POST(request: NextRequest) {
   const payload = (await request.json()) as XPlaneRoutePayload;
   const error = validateRoute(payload);
 
   if (error) {
-    return NextResponse.json(
+    return corsJson(
       {
         ok: false,
         message: error,
@@ -21,7 +26,7 @@ export async function POST(request: NextRequest) {
   try {
     const result = await sendRouteToXPlane(payload);
 
-    return NextResponse.json({
+    return corsJson({
       ok: true,
       message: `Route ${payload.from.icao} nach ${payload.to.icao} wurde an X-Plane gesendet.`,
       details: {
@@ -35,7 +40,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch {
-    return NextResponse.json(
+    return corsJson(
       {
         ok: false,
         message:

@@ -1,7 +1,11 @@
-import { NextResponse } from "next/server";
+import { corsJson, corsOptions } from "@/lib/http/cors";
 import { checkXPlaneConnection, getXPlaneTarget } from "@/lib/xplane/udp";
 
 export const runtime = "nodejs";
+
+export function OPTIONS() {
+  return corsOptions();
+}
 
 export async function GET() {
   const target = getXPlaneTarget();
@@ -9,7 +13,7 @@ export async function GET() {
   try {
     const result = await checkXPlaneConnection();
 
-    return NextResponse.json({
+    return corsJson({
       ok: true,
       message: `X-Plane antwortet auf ${result.target.host}:${result.target.port}. Verbindung ist aktiv.`,
       details: {
@@ -20,7 +24,7 @@ export async function GET() {
       },
     });
   } catch {
-    return NextResponse.json(
+    return corsJson(
       {
         ok: false,
         message: `X-Plane gibt keine Rückantwort auf ${target.host}:${target.port}. Starte X-Plane und prüfe UDP/Netzwerkdaten. Wetter senden kann trotzdem funktionieren, wenn X-Plane Daten annimmt, aber keine Rückantwort sendet.`,

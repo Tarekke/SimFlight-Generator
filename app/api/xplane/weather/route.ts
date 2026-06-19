@@ -1,15 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { corsJson, corsOptions } from "@/lib/http/cors";
 import type { WeatherPayload } from "@/lib/weather/types";
 import { sendWeatherToXPlane } from "@/lib/xplane/weather";
 
 export const runtime = "nodejs";
+
+export function OPTIONS() {
+  return corsOptions();
+}
 
 export async function POST(request: NextRequest) {
   const payload = (await request.json()) as WeatherPayload;
   const error = validateWeather(payload);
 
   if (error) {
-    return NextResponse.json(
+    return corsJson(
       {
         ok: false,
         message: error,
@@ -20,7 +25,7 @@ export async function POST(request: NextRequest) {
 
   const result = await sendWeatherToXPlane(payload);
 
-  return NextResponse.json({
+  return corsJson({
     ok: true,
     message: `Wetterdaten für ${payload.location} wurden an ${result.target.host}:${result.target.port} gesendet.`,
     details: {
