@@ -3,7 +3,8 @@ export type WeatherPayload = {
   temperatureC: number;
   windDirectionDeg: number;
   windSpeedKt: number;
-  pressureHpa: number;
+  qnh: number;
+  pressureHpa?: number;
   visibilityM: number;
   cloudCoverage: number;
   rainPercent?: number;

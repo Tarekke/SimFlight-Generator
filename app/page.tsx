@@ -19,7 +19,7 @@ type WeatherForm = {
   temperatureC: string;
   windDirectionDeg: string;
   windSpeedKt: string;
-  pressureHpa: string;
+  qnh: string;
   visibilityM: string;
   cloudCoverage: string;
   rainPercent: string;
@@ -117,7 +117,7 @@ const initialForm: WeatherForm = {
   temperatureC: "15",
   windDirectionDeg: "270",
   windSpeedKt: "8",
-  pressureHpa: "1013",
+  qnh: "1013",
   visibilityM: "10000",
   cloudCoverage: "30",
   rainPercent: "0",
@@ -159,7 +159,7 @@ const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherF
       temperatureC: "18",
       windDirectionDeg: "270",
       windSpeedKt: "5",
-      pressureHpa: "1013",
+      qnh: "1013",
       visibilityM: "20000",
       cloudCoverage: "5",
       rainPercent: "0",
@@ -177,7 +177,7 @@ const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherF
       temperatureC: "15",
       windDirectionDeg: "183",
       windSpeedKt: "60",
-      pressureHpa: "1013",
+      qnh: "1013",
       visibilityM: "20000",
       cloudCoverage: "10",
       rainPercent: "0",
@@ -195,7 +195,7 @@ const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherF
       temperatureC: "8",
       windDirectionDeg: "90",
       windSpeedKt: "35",
-      pressureHpa: "990",
+      qnh: "990",
       visibilityM: "900",
       cloudCoverage: "95",
       rainPercent: "100",
@@ -203,6 +203,96 @@ const presets: { name: string; tone: "clear" | "windy" | "bad"; values: WeatherF
       timeOfDay: "18:30",
       timeZoneOffsetMinutes: "60",
       weatherRadiusKm: "25",
+    },
+  },
+  {
+    name: "Gewitter",
+    tone: "bad",
+    values: {
+      location: "Gewitter",
+      temperatureC: "22",
+      windDirectionDeg: "230",
+      windSpeedKt: "38",
+      qnh: "994",
+      visibilityM: "2500",
+      cloudCoverage: "100",
+      rainPercent: "95",
+      turbulence: "8",
+      timeOfDay: "17:30",
+      timeZoneOffsetMinutes: "60",
+      weatherRadiusKm: "18",
+    },
+  },
+  {
+    name: "Wintersturm",
+    tone: "bad",
+    values: {
+      location: "Wintersturm",
+      temperatureC: "-8",
+      windDirectionDeg: "40",
+      windSpeedKt: "45",
+      qnh: "982",
+      visibilityM: "1200",
+      cloudCoverage: "100",
+      rainPercent: "70",
+      turbulence: "7",
+      timeOfDay: "09:00",
+      timeZoneOffsetMinutes: "60",
+      weatherRadiusKm: "22",
+    },
+  },
+  {
+    name: "Nebel",
+    tone: "windy",
+    values: {
+      location: "Nebel",
+      temperatureC: "6",
+      windDirectionDeg: "120",
+      windSpeedKt: "3",
+      qnh: "1018",
+      visibilityM: "350",
+      cloudCoverage: "85",
+      rainPercent: "15",
+      turbulence: "1",
+      timeOfDay: "07:00",
+      timeZoneOffsetMinutes: "60",
+      weatherRadiusKm: "15",
+    },
+  },
+  {
+    name: "Hitzewelle",
+    tone: "windy",
+    values: {
+      location: "Hitzewelle",
+      temperatureC: "41",
+      windDirectionDeg: "170",
+      windSpeedKt: "12",
+      qnh: "1006",
+      visibilityM: "9000",
+      cloudCoverage: "8",
+      rainPercent: "0",
+      turbulence: "4",
+      timeOfDay: "14:30",
+      timeZoneOffsetMinutes: "60",
+      weatherRadiusKm: "45",
+    },
+  },
+  {
+    name: "Hurrikan/Sturm",
+    tone: "bad",
+    values: {
+      location: "Hurrikan/Sturm",
+      temperatureC: "27",
+      windDirectionDeg: "80",
+      windSpeedKt: "85",
+      qnh: "955",
+      visibilityM: "800",
+      cloudCoverage: "100",
+      rainPercent: "100",
+      turbulence: "10",
+      timeOfDay: "16:00",
+      timeZoneOffsetMinutes: "60",
+      weatherRadiusKm: "12",
     },
   },
 ];
@@ -230,7 +320,6 @@ export default function Home() {
   const [isLocationOpen, setIsLocationOpen] = useState(false);
   const [openAirportPicker, setOpenAirportPicker] = useState<"start" | "end" | null>(null);
   const [liveState, setLiveState] = useState("Live ist aus.");
-  const [bridgeUrl, setBridgeUrl] = useState("");
 
   const cityOptions = majorCities;
   const locationSearch = normalizeSearch(form.location.trim());
@@ -248,15 +337,9 @@ export default function Home() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get("view");
-    const bridge = params.get("bridge") || window.localStorage.getItem("simflightBridgeUrl");
 
     if (isActiveView(view)) {
       setActiveView(view);
-    }
-
-    if (bridge) {
-      setBridgeUrl(bridge);
-      window.localStorage.setItem("simflightBridgeUrl", bridge);
     }
   }, []);
 
@@ -280,7 +363,7 @@ export default function Home() {
     setIsChecking(true);
     setStatus(null);
 
-    const data = await fetchXPlaneJson("/api/xplane/status", undefined, 45000, activeView, bridgeUrl);
+    const data = await fetchXPlaneJson("/api/xplane/status", undefined, 45000, activeView);
 
     setStatus(data);
     setIsChecking(false);
@@ -309,7 +392,6 @@ export default function Home() {
       },
       45000,
       "weather",
-      bridgeUrl,
     );
   }
 
@@ -324,7 +406,6 @@ export default function Home() {
       },
       45000,
       "weather",
-      bridgeUrl,
     );
 
     setSendResult(data);
@@ -364,7 +445,6 @@ export default function Home() {
       },
       45000,
       "route",
-      bridgeUrl,
     );
 
     setRouteApplyResult(data);
@@ -390,7 +470,6 @@ export default function Home() {
       },
       45000,
       "challenge",
-      bridgeUrl,
     );
 
     setChallengeApplyResult({
@@ -434,7 +513,6 @@ export default function Home() {
       },
       45000,
       "scenario",
-      bridgeUrl,
     );
 
     setScenarioApplyResult({
@@ -1001,13 +1079,13 @@ export default function Home() {
               onChange={(value) => setForm({ ...form, windSpeedKt: value })}
             />
             <Slider
-              label="Luftdruck"
-              unit="hPa"
+              label="QNH"
+              unit="QNH"
               min="950"
               max="1050"
-              value={form.pressureHpa}
-              color={pressureColor(Number(form.pressureHpa))}
-              onChange={(value) => setForm({ ...form, pressureHpa: value })}
+              value={form.qnh}
+              color={pressureColor(Number(form.qnh))}
+              onChange={(value) => setForm({ ...form, qnh: value })}
             />
             <Slider
               label="Sicht"
@@ -1077,21 +1155,6 @@ export default function Home() {
 
           <p className="muted">{liveState}</p>
 
-          <label className="bridgeField">
-            Bridge-URL
-            <input
-              placeholder="https://deine-bridge.trycloudflare.com"
-              value={bridgeUrl}
-              onChange={(event) => {
-                setBridgeUrl(event.target.value);
-                window.localStorage.setItem("simflightBridgeUrl", event.target.value);
-              }}
-            />
-            <span>
-              Für Vercel ohne Seitenwechsel. Die URL muss auf deinen lokalen Server zeigen.
-            </span>
-          </label>
-
           <StatusBlock title="Verbindung" result={status} empty="Noch nicht geprüft." />
           <StatusBlock title="Letztes Senden" result={sendResult} empty="Noch nichts gesendet." />
 
@@ -1101,7 +1164,7 @@ export default function Home() {
 
           <div className="note">
             <strong>Testwerte:</strong> 55 kt Wind aus Osten, 700 m Sicht, starker Regen, tiefe
-            Wolken und niedriger Luftdruck. Das sollte in X-Plane klar auffallen.
+            Wolken und niedriges QNH. Das sollte in X-Plane klar auffallen.
           </div>
 
           <div className="note">
@@ -1538,7 +1601,7 @@ function toPayload(form: WeatherForm) {
     temperatureC: Number(form.temperatureC),
     windDirectionDeg: Number(form.windDirectionDeg),
     windSpeedKt: Number(form.windSpeedKt),
-    pressureHpa: Number(form.pressureHpa),
+    qnh: Number(form.qnh),
     visibilityM: Number(form.visibilityM),
     cloudCoverage: Number(form.cloudCoverage),
     rainPercent: Number(form.rainPercent),
@@ -2438,7 +2501,7 @@ function defaultAircraftLabel(category: AircraftCategory, estimatedMinutes = 0) 
   return "Cessna 172 oder Cessna Caravan";
 }
 
-function xplaneApiUrls(path: string, bridgeUrl = "") {
+function xplaneApiUrls(path: string) {
   if (typeof window === "undefined") {
     return [path];
   }
@@ -2449,14 +2512,7 @@ function xplaneApiUrls(path: string, bridgeUrl = "") {
     return [path];
   }
 
-  const urls = [`http://localhost:3000${path}`, `http://127.0.0.1:3000${path}`];
-  const normalizedBridgeUrl = normalizeBridgeUrl(bridgeUrl);
-
-  if (normalizedBridgeUrl) {
-    return [`${normalizedBridgeUrl}${path}`, ...urls];
-  }
-
-  return urls;
+  return [`http://localhost:3000${path}`, `http://127.0.0.1:3000${path}`];
 }
 
 async function fetchXPlaneJson(
@@ -2464,13 +2520,12 @@ async function fetchXPlaneJson(
   init?: RequestInit,
   timeoutMs = 45000,
   bridgeView: ActiveView = "weather",
-  bridgeUrl = "",
 ): Promise<ApiResult> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    for (const url of xplaneApiUrls(path, bridgeUrl)) {
+    for (const url of xplaneApiUrls(path)) {
       try {
         const response = await fetch(url, {
           ...init,
@@ -2487,7 +2542,7 @@ async function fetchXPlaneJson(
 
     return {
       ok: false,
-      message: xplaneBridgeErrorMessage(bridgeUrl),
+      message: xplaneBridgeErrorMessage(),
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
@@ -2499,14 +2554,14 @@ async function fetchXPlaneJson(
 
     return {
       ok: false,
-      message: xplaneBridgeErrorMessage(bridgeUrl),
+      message: xplaneBridgeErrorMessage(),
     };
   } finally {
     window.clearTimeout(timeout);
   }
 }
 
-function xplaneBridgeErrorMessage(bridgeUrl = "") {
+function xplaneBridgeErrorMessage() {
   if (typeof window === "undefined") {
     return "X-Plane konnte nicht erreicht werden.";
   }
@@ -2517,19 +2572,11 @@ function xplaneBridgeErrorMessage(bridgeUrl = "") {
     return "Die lokale X-Plane-Verbindung konnte nicht erreicht werden. Prüfe, ob X-Plane läuft.";
   }
 
-  if (normalizeBridgeUrl(bridgeUrl)) {
-    return "Die Bridge-URL wurde nicht erreicht. Prüfe, ob der Tunnel läuft und auf http://localhost:3000 zeigt.";
-  }
-
-  return "Der Browser blockiert den direkten lokalen Zugriff. Trage eine Bridge-URL ein, damit Vercel auf dieser Seite bleiben kann.";
+  return "Der Browser blockiert den direkten lokalen Zugriff. Nutze localhost:3000, damit X-Plane gesteuert werden kann.";
 }
 
 function isActiveView(value: string | null): value is ActiveView {
   return value === "menu" || value === "weather" || value === "route" || value === "challenge" || value === "scenario";
-}
-
-function normalizeBridgeUrl(value: string) {
-  return value.trim().replace(/\/+$/, "");
 }
 
 function colorScale(value: number, min: number, max: number, stops: string[]) {

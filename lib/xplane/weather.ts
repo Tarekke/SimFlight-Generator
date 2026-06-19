@@ -7,7 +7,7 @@ export function createExtremeWeatherPayload(): WeatherPayload {
     temperatureC: -5,
     windDirectionDeg: 90,
     windSpeedKt: 55,
-    pressureHpa: 985,
+    qnh: 985,
     visibilityM: 700,
     cloudCoverage: 95,
     rainPercent: 100,
@@ -17,7 +17,8 @@ export function createExtremeWeatherPayload(): WeatherPayload {
 
 export async function sendWeatherToXPlane(payload: WeatherPayload) {
   const windSpeedMsc = payload.windSpeedKt * 0.514444;
-  const pressurePas = payload.pressureHpa * 100;
+  const qnh = payload.qnh ?? payload.pressureHpa ?? 1013;
+  const qnhPas = qnh * 100;
   const visibilitySm = payload.visibilityM / 1609.344;
   const cloudCoverageRatio = payload.cloudCoverage / 100;
   const rainRatio = (payload.rainPercent ?? 0) / 100;
@@ -41,11 +42,11 @@ export async function sendWeatherToXPlane(payload: WeatherPayload) {
     },
     {
       path: "sim/weather/region/qnh_pas",
-      value: pressurePas,
+      value: qnhPas,
     },
     {
       path: "sim/weather/region/sealevel_pressure_pas",
-      value: pressurePas,
+      value: qnhPas,
     },
     {
       path: "sim/weather/region/visibility_reported_sm",
